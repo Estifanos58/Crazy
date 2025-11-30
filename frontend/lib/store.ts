@@ -44,6 +44,35 @@ interface GameStore {
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
+// Helper to save state to sessionStorage
+const saveStateToStorage = (state: Partial<GameStore>) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const stateToSave = {
+      username: state.username,
+      avatar: state.avatar,
+      roomId: state.roomId,
+      isCreator: state.isCreator,
+      gameStarted: state.gameStarted,
+    };
+    sessionStorage.setItem('crazy-game-state', JSON.stringify(stateToSave));
+  } catch (error) {
+    console.error('Failed to save state:', error);
+  }
+};
+
+// Helper to restore state from sessionStorage
+const restoreStateFromStorage = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const saved = sessionStorage.getItem('crazy-game-state');
+    return saved ? JSON.parse(saved) : null;
+  } catch (error) {
+    console.error('Failed to restore state:', error);
+    return null;
+  }
+};
+
 export const useGameStore = create<GameStore>((set, get) => ({
   socket: null,
   isConnected: false,
@@ -65,16 +94,109 @@ export const useGameStore = create<GameStore>((set, get) => ({
   gameOver: false,
 
   connect: () => {
-    const socket = io(BACKEND_URL);
+    // Prevent duplicate connections
+    const existingSocket = get().socket;
+    if (existingSocket && existingSocket.connected) {
+      console.log('⚠️ Socket already connected');
+      return;
+    }
+
+    // Disconnect existing socket if any
+    if (existingSocket) {
+      existingSocket.disconnect();
+    }
+
+    console.log('🔌 Connecting to server...');
+    const socket = io(BACKEND_URL, {
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
+      timeout: 20000,
+      transports: ['websocket', 'polling'],
+      upgrade: true,
+    });
 
     socket.on('connect', () => {
       console.log('✅ Connected to server');
       set({ socket, isConnected: true });
+      
+      // Restore state after reconnection
+      const savedState = restoreStateFromStorage();
+      if (savedState && savedState.roomId) {
+        console.log('🔄 Attempting to restore session...');
+        const { username, avatar, roomId, isCreator } = savedState;
+        
+        // Try to rejoin the room
+        socket.emit('rejoin-room', { roomId, username, avatar }, (response: any) => {
+          if (response.success) {
+            console.log('✅ Session restored successfully');
+            set({
+              username,
+              avatar,
+              roomId,
+              isCreator,
+              room: response.room,
+              players: response.room.players,
+              gameStarted: response.room.gameStarted || false,
+            });
+            
+            // If game was started, request game state
+            if (response.room.gameStarted) {
+              socket.emit('get-game-state', { roomId }, (stateResponse: any) => {
+                if (stateResponse.success) {
+                  const data = stateResponse.state;
+                  set({
+                    yourCards: data.yourCards,
+                    currentTurn: data.currentTurn,
+                    currentSuit: data.currentSuit || null,
+                    topCard: data.topCard || null,
+                    punishmentChain: data.punishmentChain || null,
+                    players: data.players,
+                    activePlayers: data.players.filter((p: any) => 
+                      p.cardCount > 0 && !get().finishedPlayers.some(fp => fp.id === p.id)
+                    ),
+                  });
+                }
+              });
+            }
+          } else {
+            console.log('⚠️ Could not restore session:', response.error);
+            // Clear invalid session
+            sessionStorage.removeItem('crazy-game-state');
+          }
+        });
+      }
     });
 
-    socket.on('disconnect', () => {
-      console.log('❌ Disconnected from server');
+    socket.on('disconnect', (reason) => {
+      console.log('❌ Disconnected from server. Reason:', reason);
       set({ isConnected: false });
+      
+      // Save state before disconnect
+      const currentState = get();
+      saveStateToStorage(currentState);
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+      console.log('🔄 Reconnected after', attemptNumber, 'attempts');
+    });
+
+    socket.on('reconnect_attempt', (attemptNumber) => {
+      console.log('🔄 Reconnection attempt', attemptNumber);
+    });
+
+    socket.on('reconnect_error', (error) => {
+      console.error('❌ Reconnection error:', error.message);
+    });
+
+    socket.on('reconnect_failed', () => {
+      console.error('❌ Reconnection failed');
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('❌ Connection error:', error.message);
+      console.log('🔄 Attempting to reconnect...');
     });
 
     socket.on('player-joined', (data: { player: Player; players: Player[] }) => {
@@ -84,7 +206,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     socket.on('game-started', (data: GameState) => {
       console.log('🎮 Game started!');
-      set({
+      const newState = {
         gameStarted: true,
         yourCards: data.yourCards,
         currentTurn: data.currentTurn,
@@ -95,7 +217,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
         activePlayers: data.players.filter(p => p.cardCount > 0),
         finishedPlayers: [],
         gameOver: false,
-      });
+      };
+      set(newState);
+      saveStateToStorage(newState);
     });
 
     socket.on('game-update', (data: GameState) => {
@@ -228,12 +352,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       socket.emit('create-room', { username, avatar }, (response: any) => {
         if (response.success) {
-          set({
+          const newState = {
             roomId: response.room.roomId,
             room: response.room,
             isCreator: true,
             players: response.room.players,
-          });
+            username,
+            avatar,
+          };
+          set(newState);
+          saveStateToStorage(newState);
           resolve({ success: true, roomId: response.room.roomId });
         } else {
           resolve({ success: false, error: response.error });
@@ -253,12 +381,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       socket.emit('join-room', { roomId, username, avatar }, (response: any) => {
         if (response.success) {
-          set({
+          const newState = {
             roomId: response.room.roomId,
             room: response.room,
             isCreator: false,
             players: response.room.players,
-          });
+            username,
+            avatar,
+          };
+          set(newState);
+          saveStateToStorage(newState);
           resolve({ success: true });
         } else {
           resolve({ success: false, error: response.error });

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { Toaster } from 'sonner'
+import { ConnectionManager } from '@/components/ConnectionManager'
 
 export const metadata: Metadata = {
   title: 'Crazy - Multiplayer Card Game',
@@ -15,6 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <ConnectionManager />
         {children}
         <Toaster 
           position="top-center" 

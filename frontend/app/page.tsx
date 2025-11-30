@@ -36,7 +36,6 @@ export default function Home() {
     setShowJoinGameModal(false);
     setJoinMode('join');
     setShowUserInfo(true);
-    connect();
   };
 
   const handleGameSelect = () => {
@@ -52,7 +51,6 @@ export default function Home() {
     setJoinMode('create');
     setShowModeSelect(false);
     setShowUserInfo(true);
-    connect();
   };
 
   const handleUserInfoSubmit = async (username: string, avatar: string) => {
