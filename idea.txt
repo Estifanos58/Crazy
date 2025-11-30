@@ -1,0 +1,21 @@
+Today We will begin a new project me and you currently we are just brain storming i idea here is what we will be building "The Project is a Fullstack Online multiplayer and in future single play with Ai, Card game it will be built on the web and be compatable to telegram mini app, the flow is as follows first the user will land on the landing page select a game which currently will only be the Card game which we call "Crazy" then a modal will appear asking a single mode or multiplayer currently we will allow only multiplayer, after selecting multiplayer another modal will appear asking for user name and avatar selection, after that the backend will create a new room for the game and send an id number which can be 6 digits long or a to the client and the frontend will generate a QR code when scanned will open default browser and enter the website url with the id of the room and when new user enters the same modal will appear asking the user for a name and an avatar, after that when other users also join a websocket will be used with the current room id to show new user joind the game after the creater of the game room satisfaid with number of users he will insert the number of cards each user should have, and set the rules of the game ( their is a default rule) and press the start the game button , then the backend will gather the number of users available in that game room and will determine number of cards needed for that game to start( a tipical game card have 52 cards) and will distribute the cards randomly and gives one more card ontop of the creater asked for the user that will start the game. then the backend will store the current game room with the rules and current users id in a redis db, will send the randomly generated cards for each user and who should start the game and the game will begin for all users
+
+a,2,3,4,5,6,7,8,9,10,j,q,k
+13*4  52
+
+
+
+
+
+Here is the Game rule
+
+A player that finnished the cards that is given to him first will win the game. other users will continue playing the game until only one player is left. and the other important rules are as followes the default rules.
+card with an id 
+    - A-spades will make the next player take 5 more cards that outside the current playing cards.
+    - But if the next player has 2-spades and use it the the third player will take 5 + 2 = 7 cards.
+    - if the third has other 2 in any suits the fouth will be taking 7 + 2 = 9 and so on until the last user don't have any punishing cards. a two button will be shown for the user that will bare this either take the cards or put rank 2 card with any suits.
+    - other rule is which ever player put a card without turning to it's turn will be displayed 'Crazzy' with the user name for all users and the user will take 2 cards.
+    - other default rule is card with id 5 in any suit will be able to change the direction of the play in the reverse direction, and card id 7 with any suit can drop all similar suits at once or if droped alone can make the next user jump(means the next playe will not put any card and the thrid user will be player).
+    - player can change the playing suit to other suit using card of rank J and 8 with any suit to what ever suit he wants. if this happen the next player cann't change the game unlase it have the same rank as the previeus player.
+    - if a player drops a card with different suit than the currenttly playing suit other players can click the butten named crazy if other users clicked the crazy button before the current player the current player will be taking two cards, If he clicks the crazy button first the card he puts will be returned to him and he can droped another card.
+    -card id 2-with any suit will make the next user take two cards but an option will be presented to the user before taking the two cards either take the cards or put another 2- with any suit if he has if he choose the take 2 cards will be given to him. if he drops the 2- with any suit the next user will be shown take 4 and put 2 buttons if his clicked take 4 4 cards will be given to him, if he clicked put 2 and selects card with id 2 in any suit the third user will be given a chance for 6 or put 2 and so on but in any case a specific user clicks put 2 and clicks any other card other than 2 in any suit he will take 2 cards  
