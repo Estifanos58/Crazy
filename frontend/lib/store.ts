@@ -25,6 +25,9 @@ interface GameStore {
   punishmentChain: { active: boolean; amount: number; cards: Card[] } | null;
   players: Player[];
   lastPlayerId: string | null;
+  activePlayers: Player[];
+  finishedPlayers: Player[];
+  gameOver: boolean;
   
   // Actions
   connect: () => void;
@@ -57,6 +60,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   punishmentChain: null,
   players: [],
   lastPlayerId: null,
+  activePlayers: [],
+  finishedPlayers: [],
+  gameOver: false,
 
   connect: () => {
     const socket = io(BACKEND_URL);
@@ -86,11 +92,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
         topCard: data.topCard || null,
         punishmentChain: data.punishmentChain || null,
         players: data.players,
+        activePlayers: data.players.filter(p => p.cardCount > 0),
+        finishedPlayers: [],
+        gameOver: false,
       });
     });
 
     socket.on('game-update', (data: GameState) => {
       console.log('🔄 Game state updated:', data);
+      const currentActive = get().activePlayers;
+      const newActive = data.players.filter(p => 
+        p.cardCount > 0 && !get().finishedPlayers.some(fp => fp.id === p.id)
+      );
+      
       set({
         yourCards: data.yourCards,
         currentTurn: data.currentTurn,
@@ -98,6 +112,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         topCard: data.topCard || null,
         punishmentChain: data.punishmentChain || null,
         players: data.players,
+        activePlayers: newActive,
       });
     });
 
@@ -152,6 +167,34 @@ export const useGameStore = create<GameStore>((set, get) => ({
         
         case 'invalid-move':
           toast.error(`Invalid move: ${event.payload.reason}`);
+          break;
+        
+        case 'win':
+          const winner = players.find(p => p.id === event.payload.playerId);
+          const currentFinished = get().finishedPlayers;
+          const rank = currentFinished.length + 1;
+          
+          if (winner) {
+            // Show winner notification
+            const winnerName = winner.username;
+            const winnerAvatar = winner.avatar;
+            const rankText = rank === 1 ? '🏆 Winner!' : `Finished ${rank}${rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th'}!`;
+            
+            toast.success(`${winnerAvatar} ${winnerName} - ${rankText}`, {
+              duration: 5000,
+              className: 'bg-gradient-to-r from-yellow-500/20 to-cyber-primary/20 border-2 border-yellow-500',
+            });
+
+            // Update finished and active players
+            const newFinished = [...currentFinished, { ...winner, rank, finishedAt: Date.now() }];
+            const newActive = get().activePlayers.filter(p => p.id !== winner.id);
+            
+            set({ 
+              finishedPlayers: newFinished,
+              activePlayers: newActive,
+              gameOver: newActive.length <= 1
+            });
+          }
           break;
         
         default:

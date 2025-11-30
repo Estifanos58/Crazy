@@ -13,6 +13,15 @@ export interface Player {
   avatar: string;
   cardCount: number;
   isCreator: boolean;
+  rank?: number;
+  finishedAt?: number;
+}
+
+export interface RankedPlayer {
+  id: string;
+  username: string;
+  avatar: string;
+  rank: number;
 }
 
 export interface GameRules {

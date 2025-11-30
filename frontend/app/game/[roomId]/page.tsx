@@ -8,8 +8,9 @@ import CardHand from '@/components/CardHand';
 import PlayerList from '@/components/PlayerList';
 import Background from '@/components/Background';
 import SuitSelectionModal from '@/components/SuitSelectionModal';
+import GameOverModal from '@/components/GameOverModal';
 import { useGameStore } from '@/lib/store';
-import type { Card } from '@/types/game.types';
+import type { Card, RankedPlayer } from '@/types/game.types';
 
 export default function GamePage() {
   const params = useParams();
@@ -21,6 +22,9 @@ export default function GamePage() {
     gameStarted,
     yourCards,
     players,
+    activePlayers,
+    finishedPlayers,
+    gameOver,
     currentTurn,
     currentSuit,
     topCard,
@@ -29,6 +33,7 @@ export default function GamePage() {
     playCard,
     takePunishment,
     callCrazy,
+    setGameState,
   } = useGameStore();
 
   const [selectedCards, setSelectedCards] = useState<Card[]>([]);
@@ -120,6 +125,27 @@ export default function GamePage() {
       router.push('/');
     }
   };
+
+  const handlePlayAgain = () => {
+    // Reset game state and redirect to room
+    router.push(`/room/${roomId}`);
+  };
+
+  // Create rankings for game over modal
+  const rankings: RankedPlayer[] = [
+    ...finishedPlayers.map(p => ({
+      id: p.id,
+      username: p.username,
+      avatar: p.avatar,
+      rank: p.rank || 0,
+    })),
+    ...activePlayers.map((p, index) => ({
+      id: p.id,
+      username: p.username,
+      avatar: p.avatar,
+      rank: finishedPlayers.length + index + 1,
+    })),
+  ].sort((a, b) => a.rank - b.rank);
 
   return (
     <main className="min-h-screen relative overflow-hidden flex flex-col p-4 md:p-8">
@@ -276,12 +302,38 @@ export default function GamePage() {
           </div>
 
           {/* Sidebar */}
-          <div className="glass-panel p-6 h-fit">
+          <div className="glass-panel p-6 h-fit space-y-4">
             <PlayerList 
-              players={players} 
+              players={activePlayers} 
               currentUserId={socket?.id}
               currentTurn={currentTurn}
             />
+            
+            {finishedPlayers.length > 0 && (
+              <div className="border-t border-white/10 pt-4">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                  Finished ({finishedPlayers.length})
+                </h3>
+                <div className="space-y-2">
+                  {finishedPlayers.map((player) => (
+                    <div
+                      key={player.id}
+                      className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/10"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{player.avatar}</span>
+                        <div>
+                          <p className="text-sm font-medium text-white">{player.username}</p>
+                          <p className="text-xs text-yellow-500">
+                            {player.rank === 1 ? '🏆 Winner' : `${player.rank}${getRankSuffix(player.rank || 0)}`}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -291,6 +343,20 @@ export default function GamePage() {
         isOpen={showSuitModal}
         onSelect={handleSuitSelect}
       />
+
+      {/* Game Over Modal */}
+      <GameOverModal
+        isOpen={gameOver}
+        rankings={rankings}
+        onPlayAgain={handlePlayAgain}
+      />
     </main>
   );
+}
+
+function getRankSuffix(rank: number): string {
+  if (rank === 1) return 'st';
+  if (rank === 2) return 'nd';
+  if (rank === 3) return 'rd';
+  return 'th';
 }
