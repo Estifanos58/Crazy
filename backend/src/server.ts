@@ -16,7 +16,14 @@ const io = new Server(httpServer, {
   cors: {
     origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
     methods: ['GET', 'POST'],
+    credentials: true,
   },
+  pingTimeout: 60000, // 60 seconds
+  pingInterval: 25000, // 25 seconds
+  upgradeTimeout: 30000, // 30 seconds
+  maxHttpBufferSize: 1e8, // 100 MB
+  transports: ['websocket', 'polling'],
+  allowEIO3: true, // compatibility
 });
 
 // Middleware

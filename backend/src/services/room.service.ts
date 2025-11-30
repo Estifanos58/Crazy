@@ -140,4 +140,39 @@ export class RoomService {
   static async roomExists(roomId: string): Promise<boolean> {
     return await redisService.exists(`${this.ROOM_PREFIX}${roomId}`);
   }
+
+  static async rejoinRoom(socketId: string, roomId: string, username: string, avatar: string): Promise<GameRoom | null> {
+    const room = await this.getRoom(roomId);
+    
+    if (!room) {
+      return null;
+    }
+
+    // Check if player already exists in room
+    const existingPlayerIndex = room.players.findIndex(p => p.username === username);
+    
+    if (existingPlayerIndex !== -1) {
+      // Update socket ID for reconnected player
+      room.players[existingPlayerIndex].id = socketId;
+      await this.saveRoom(room);
+      console.log(`🔄 Player ${username} reconnected to room ${roomId}`);
+    } else if (!room.gameStarted) {
+      // If game hasn't started, allow new join
+      const newPlayer: Player = {
+        id: socketId,
+        username,
+        avatar,
+        cards: [],
+        isCreator: false,
+      };
+      room.players.push(newPlayer);
+      await this.saveRoom(room);
+      console.log(`➕ Player ${username} joined room ${roomId}`);
+    } else {
+      // Can't join a game in progress as a new player
+      throw new Error('Cannot join game in progress');
+    }
+
+    return room;
+  }
 }
