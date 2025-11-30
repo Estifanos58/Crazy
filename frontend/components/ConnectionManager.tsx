@@ -21,9 +21,9 @@ export function ConnectionManager() {
 
     if (!isConnected && hasInitialized) {
       // Show disconnection toast
-      reconnectToastId = toast.loading('Reconnecting to server...', {
-        duration: Infinity,
-      });
+    //   reconnectToastId = toast.loading('Reconnecting to server...', {
+    //     duration: Infinity,
+    //   });
     } else if (isConnected && reconnectToastId) {
       // Dismiss reconnection toast when connected
       toast.dismiss(reconnectToastId);
