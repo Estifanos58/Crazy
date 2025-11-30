@@ -160,6 +160,7 @@ export class SocketController {
                 playerId: socket.id,
                 reason: validation.errors?.join(', ') || 'Invalid move',
                 canBeChallenged: true,
+                cards: data.cards,
               },
             });
           }
@@ -379,6 +380,79 @@ export class SocketController {
         } catch (error) {
           console.error('Error getting game state:', error);
           callback({ success: false, error: 'Failed to get game state' });
+        }
+      });
+
+      // Revert blunder move
+      socket.on('revert-blunder', async (data: { roomId: string; cards: Card[] }, callback) => {
+        try {
+          const room = await RoomService.getRoom(data.roomId);
+          
+          if (!room) {
+            callback({ success: false, error: 'Room not found' });
+            return;
+          }
+
+          const player = room.players.find(p => p.id === socket.id);
+          
+          if (!player) {
+            callback({ success: false, error: 'Player not in game' });
+            return;
+          }
+
+          // Remove cards from pile (undo the play)
+          if (!room.pile) room.pile = [];
+          
+          const cardsToRevert = data.cards.length;
+          for (let i = 0; i < cardsToRevert; i++) {
+            const removedCard = room.pile.pop();
+            if (removedCard) {
+              player.cards.push(removedCard);
+            }
+          }
+
+          // Restore previous game state
+          const previousTopCard = room.pile.length > 0 ? room.pile[room.pile.length - 1] : null;
+          if (previousTopCard) {
+            room.currentSuit = previousTopCard.suit;
+          }
+
+          // Don't change turn (player gets another chance)
+          
+          await RoomService.saveRoom(room);
+
+          // Notify all players about revert
+          io.to(room.roomId).emit('game-event', {
+            type: 'blunder-reverted',
+            payload: {
+              playerId: socket.id,
+              message: 'Move reverted',
+            },
+          });
+
+          // Send updated state to all players
+          room.players.forEach(p => {
+            io.to(p.id).emit('game-update', {
+              yourCards: p.cards,
+              currentTurn: room.currentTurn,
+              currentSuit: room.currentSuit,
+              topCard: room.pile && room.pile.length > 0 ? room.pile[room.pile.length - 1] : null,
+              punishmentChain: room.punishmentChain,
+              players: room.players.map(player => ({
+                id: player.id,
+                username: player.username,
+                avatar: player.avatar,
+                cardCount: player.cards.length,
+                isCreator: player.isCreator,
+              })),
+            });
+          });
+
+          callback({ success: true });
+          console.log(`↩️ ${socket.id} reverted blunder in room ${data.roomId}`);
+        } catch (error) {
+          console.error('Error reverting blunder:', error);
+          callback({ success: false, error: (error as Error).message });
         }
       });
 

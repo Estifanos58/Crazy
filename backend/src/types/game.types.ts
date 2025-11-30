@@ -117,7 +117,8 @@ export type GameEvent =
   | { type: 'win'; playerId: string; playerName: string }
   | { type: 'turn_changed'; playerId: string }
   | { type: 'card-played'; payload: { playerId: string; cards: Card[] } }
-  | { type: 'invalid-move'; payload: { playerId: string; reason: string; canBeChallenged: boolean } }
+  | { type: 'invalid-move'; payload: { playerId: string; reason: string; canBeChallenged: boolean; cards?: Card[] } }
+  | { type: 'blunder-reverted'; payload: { playerId: string; message: string } }
   | { type: 'punishment-taken'; payload: { playerId: string; amount: number } }
   | { type: 'punishment-chain-started'; payload: { amount: number } }
   | { type: 'punishment-chain-increased'; payload: { amount: number } }
