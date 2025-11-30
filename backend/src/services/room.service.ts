@@ -152,10 +152,27 @@ export class RoomService {
     const existingPlayerIndex = room.players.findIndex(p => p.username === username);
     
     if (existingPlayerIndex !== -1) {
+      // Get old socket ID before updating
+      const oldSocketId = room.players[existingPlayerIndex].id;
+      
       // Update socket ID for reconnected player
       room.players[existingPlayerIndex].id = socketId;
+      
+      // If this player was the current turn, update currentTurn to new socket ID
+      if (room.currentTurn === oldSocketId) {
+        room.currentTurn = socketId;
+        console.log(`🔄 Updated currentTurn from ${oldSocketId} to ${socketId}`);
+      }
+      
+      // If this player was the creator, update creatorId
+      if (room.creatorId === oldSocketId) {
+        room.creatorId = socketId;
+        room.players[existingPlayerIndex].isCreator = true;
+        console.log(`🔄 Updated creatorId from ${oldSocketId} to ${socketId}`);
+      }
+      
       await this.saveRoom(room);
-      console.log(`🔄 Player ${username} reconnected to room ${roomId}`);
+      console.log(`🔄 Player ${username} reconnected to room ${roomId} (${oldSocketId} → ${socketId})`);
     } else if (!room.gameStarted) {
       // If game hasn't started, allow new join
       const newPlayer: Player = {

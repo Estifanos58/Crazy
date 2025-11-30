@@ -59,6 +59,10 @@ export class ReconnectionHandler {
             currentSuit: room.currentSuit,
             yourCards: player.cards,
             punishmentChain: room.punishmentChain,
+            turnDirection: room.turnDirection || 'clockwise',
+            gameOver: false, // Check if any player has won based on card count
+            pileCount: room.pile?.length || 0,
+            deckCount: room.deck?.length || 0,
           },
         });
       } catch (error) {
