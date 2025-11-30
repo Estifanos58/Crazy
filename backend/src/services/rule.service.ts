@@ -209,6 +209,15 @@ export class RuleService {
     // Add cards to pile
     newState.pile.push(...cards);
 
+    // Emit card-played event
+    events.push({
+      type: 'card-played',
+      payload: {
+        playerId: playerId,
+        cards: cards,
+      },
+    });
+
     // Update current suit
     const lastCard = cards[cards.length - 1];
     newState.currentSuit = chosenSuit || lastCard.suit;
@@ -264,6 +273,7 @@ export class RuleService {
 
     if (isAceSpade) {
       // Start or continue A♠ chain
+      const wasActive = chain.active;
       chain.active = true;
       chain.amount += config.punishment.aceSpadePenalty;
       chain.cards.push(card);
@@ -273,6 +283,18 @@ export class RuleService {
         card: card,
         totalPunishment: chain.amount,
       });
+
+      if (!wasActive) {
+        events.push({
+          type: 'punishment-chain-started',
+          payload: { amount: chain.amount },
+        });
+      } else {
+        events.push({
+          type: 'punishment-chain-increased',
+          payload: { amount: chain.amount },
+        });
+      }
     } else if (isRank2 && chain.active) {
       // Add to existing punishment chain
       chain.amount += config.punishment.rank2Penalty;
@@ -282,6 +304,11 @@ export class RuleService {
         type: 'punishment_added',
         card: card,
         totalPunishment: chain.amount,
+      });
+
+      events.push({
+        type: 'punishment-chain-increased',
+        payload: { amount: chain.amount },
       });
     } else if (isRank2 && !chain.active) {
       // Start new rank-2 chain
@@ -293,6 +320,11 @@ export class RuleService {
         type: 'punishment_added',
         card: card,
         totalPunishment: chain.amount,
+      });
+
+      events.push({
+        type: 'punishment-chain-started',
+        payload: { amount: chain.amount },
       });
     } else if (chain.active) {
       // Chain ends - next player takes punishment
@@ -337,6 +369,10 @@ export class RuleService {
         type: 'reverse',
         newDirection: stateChanges.turnDirection,
       });
+      events.push({
+        type: 'turn-reversed',
+        payload: {},
+      });
     }
 
     // Check skip
@@ -345,9 +381,14 @@ export class RuleService {
     );
 
     if (isSkip) {
+      const skippedPlayerId = this.getNextPlayer(state);
       events.push({
         type: 'skip',
-        skippedPlayerId: this.getNextPlayer(state),
+        skippedPlayerId: skippedPlayerId,
+      });
+      events.push({
+        type: 'player-skipped',
+        payload: { playerId: skippedPlayerId },
       });
       // Advance turn one extra time
       this.advanceTurn(state);
@@ -364,6 +405,10 @@ export class RuleService {
         type: 'suit_change',
         newSuit: chosenSuit,
         card: card,
+      });
+      events.push({
+        type: 'suit-changed',
+        payload: { suit: chosenSuit },
       });
     }
 
@@ -392,6 +437,16 @@ export class RuleService {
       playerId: playerId,
       calledBy: calledBy,
       penalty: config.illegalTurnPenalty,
+    });
+
+    events.push({
+      type: 'crazy-called',
+      payload: {
+        success: true,
+        callerId: calledBy,
+        targetId: playerId,
+        penalty: config.illegalTurnPenalty,
+      },
     });
 
     // Player draws penalty cards
@@ -474,6 +529,14 @@ export class RuleService {
       type: 'punishment_taken',
       playerId: playerId,
       amount: amount,
+    });
+
+    events.push({
+      type: 'punishment-taken',
+      payload: {
+        playerId: playerId,
+        amount: amount,
+      },
     });
 
     // Reset punishment chain

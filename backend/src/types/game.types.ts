@@ -115,7 +115,16 @@ export type GameEvent =
   | { type: 'crazy_challenge_won'; playerId: string }
   | { type: 'cards_drawn'; playerId: string; amount: number }
   | { type: 'win'; playerId: string; playerName: string }
-  | { type: 'turn_changed'; playerId: string };
+  | { type: 'turn_changed'; playerId: string }
+  | { type: 'card-played'; payload: { playerId: string; cards: Card[] } }
+  | { type: 'invalid-move'; payload: { playerId: string; reason: string; canBeChallenged: boolean } }
+  | { type: 'punishment-taken'; payload: { playerId: string; amount: number } }
+  | { type: 'punishment-chain-started'; payload: { amount: number } }
+  | { type: 'punishment-chain-increased'; payload: { amount: number } }
+  | { type: 'turn-reversed'; payload: {} }
+  | { type: 'player-skipped'; payload: { playerId: string } }
+  | { type: 'suit-changed'; payload: { suit: Suit } }
+  | { type: 'crazy-called'; payload: { success: boolean; callerId: string; targetId: string; penalty: number } };
 
 /**
  * Rule validation result

@@ -139,13 +139,10 @@ export class SocketController {
             gameEnded: false,
           };
 
-          // Validate move
+          // Validate move (but allow blunders)
           const validation = RuleService.validateMove(gameState, socket.id, data.cards);
           
-          if (!validation.valid) {
-            callback({ success: false, error: validation.errors?.join(', ') });
-            return;
-          }
+          const isBlunder = !validation.valid && validation.canChallengeCrazy;
 
           // Apply card effects
           const { updatedState, events } = RuleService.applyCardEffects(
@@ -154,6 +151,18 @@ export class SocketController {
             data.cards,
             data.chosenSuit
           );
+
+          // Add blunder event if invalid move
+          if (isBlunder) {
+            events.push({
+              type: 'invalid-move',
+              payload: {
+                playerId: socket.id,
+                reason: validation.errors?.join(', ') || 'Invalid move',
+                canBeChallenged: true,
+              },
+            });
+          }
 
           // Update room with new state
           room.players = updatedState.players;
