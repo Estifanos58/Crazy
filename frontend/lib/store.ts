@@ -29,6 +29,13 @@ interface GameStore {
   finishedPlayers: Player[];
   gameOver: boolean;
   
+  // Blunder state
+  blunderActive: boolean;
+  blunderReason: string | null;
+  blunderPlayerId: string | null;
+  blunderCards: Card[];
+  blunderTimeLeft: number;
+  
   // Actions
   connect: () => void;
   disconnect: () => void;
@@ -39,6 +46,7 @@ interface GameStore {
   playCard: (cards: Card[], chosenSuit?: string) => Promise<{ success: boolean; error?: string }>;
   takePunishment: () => Promise<{ success: boolean; error?: string }>;
   callCrazy: (targetPlayerId: string) => Promise<{ success: boolean; error?: string }>;
+  revertBlunder: () => Promise<{ success: boolean; error?: string }>;
   setGameState: (state: Partial<GameStore>) => void;
 }
 
@@ -92,6 +100,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
   activePlayers: [],
   finishedPlayers: [],
   gameOver: false,
+  
+  blunderActive: false,
+  blunderReason: null,
+  blunderPlayerId: null,
+  blunderCards: [],
+  blunderTimeLeft: 0,
 
   connect: () => {
     // Prevent duplicate connections
@@ -290,7 +304,91 @@ export const useGameStore = create<GameStore>((set, get) => ({
           break;
         
         case 'invalid-move':
-          toast.error(`Invalid move: ${event.payload.reason}`);
+          const isMyBlunder = event.payload.playerId === get().socket?.id;
+          
+          if (isMyBlunder && event.payload.canBeChallenged) {
+            // Show blunder modal for the player who made the mistake
+            set({
+              blunderActive: true,
+              blunderReason: event.payload.reason,
+              blunderPlayerId: event.payload.playerId,
+              blunderCards: event.payload.cards || [],
+              blunderTimeLeft: 5, // 5 seconds to revert
+            });
+            
+            // Start countdown
+            let timeLeft = 5;
+            const countdownInterval = setInterval(() => {
+              timeLeft--;
+              set({ blunderTimeLeft: timeLeft });
+              
+              if (timeLeft <= 0) {
+                clearInterval(countdownInterval);
+                // Auto-close modal but keep blunder active for challenges
+                const stillActive = get().blunderActive;
+                if (stillActive) {
+                  // Wait 3 more seconds for challenges
+                  setTimeout(() => {
+                    if (get().blunderActive && get().blunderPlayerId === event.payload.playerId) {
+                      // No one challenged, clear blunder state
+                      set({
+                        blunderActive: false,
+                        blunderReason: null,
+                        blunderPlayerId: null,
+                        blunderCards: [],
+                        blunderTimeLeft: 0,
+                      });
+                    }
+                  }, 3000);
+                }
+              }
+            }, 1000);
+          } else if (event.payload.canBeChallenged) {
+            // Show toast for other players to challenge
+            toast.error(`🚨 ${getPlayerName(event.payload.playerId)} made an invalid move! Click "Call Crazy" to challenge!`, {
+              duration: 5000,
+              className: 'border-2 border-red-500',
+            });
+            
+            // Store blunder info for challenge
+            set({
+              blunderActive: true,
+              blunderReason: event.payload.reason,
+              blunderPlayerId: event.payload.playerId,
+              blunderCards: event.payload.cards || [],
+              blunderTimeLeft: 8, // 8 seconds total for challenges
+            });
+            
+            // Auto-clear after challenge window
+            setTimeout(() => {
+              if (get().blunderPlayerId === event.payload.playerId) {
+                set({
+                  blunderActive: false,
+                  blunderReason: null,
+                  blunderPlayerId: null,
+                  blunderCards: [],
+                  blunderTimeLeft: 0,
+                });
+              }
+            }, 8000);
+          } else {
+            toast.error(`Invalid move: ${event.payload.reason}`);
+          }
+          break;
+        
+        case 'blunder-reverted':
+          toast.success(`${getPlayerName(event.payload.playerId)} reverted their move`, {
+            duration: 3000,
+          });
+          
+          // Clear blunder state for everyone
+          set({
+            blunderActive: false,
+            blunderReason: null,
+            blunderPlayerId: null,
+            blunderCards: [],
+            blunderTimeLeft: 0,
+          });
           break;
         
         case 'win':
@@ -467,6 +565,41 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       socket.emit('call-crazy', { roomId, targetPlayerId }, (response: any) => {
         if (response.success) {
+          // Clear blunder state after challenge
+          set({
+            blunderActive: false,
+            blunderReason: null,
+            blunderPlayerId: null,
+            blunderCards: [],
+            blunderTimeLeft: 0,
+          });
+          resolve({ success: true });
+        } else {
+          resolve({ success: false, error: response.error });
+        }
+      });
+    });
+  },
+
+  revertBlunder: (): Promise<{ success: boolean; error?: string }> => {
+    return new Promise((resolve) => {
+      const { socket, roomId, blunderCards } = get();
+      
+      if (!socket || !roomId) {
+        resolve({ success: false, error: 'Not in a room' });
+        return;
+      }
+
+      socket.emit('revert-blunder', { roomId, cards: blunderCards }, (response: any) => {
+        if (response.success) {
+          // Clear blunder state
+          set({
+            blunderActive: false,
+            blunderReason: null,
+            blunderPlayerId: null,
+            blunderCards: [],
+            blunderTimeLeft: 0,
+          });
           resolve({ success: true });
         } else {
           resolve({ success: false, error: response.error });

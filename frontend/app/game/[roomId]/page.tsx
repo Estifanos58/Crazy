@@ -9,6 +9,7 @@ import PlayerList from '@/components/PlayerList';
 import Background from '@/components/Background';
 import SuitSelectionModal from '@/components/SuitSelectionModal';
 import GameOverModal from '@/components/GameOverModal';
+import BlunderModal from '@/components/BlunderModal';
 import { useGameStore } from '@/lib/store';
 import type { Card, RankedPlayer } from '@/types/game.types';
 
@@ -30,9 +31,13 @@ export default function GamePage() {
     topCard,
     punishmentChain,
     lastPlayerId,
+    blunderActive,
+    blunderReason,
+    blunderTimeLeft,
     playCard,
     takePunishment,
     callCrazy,
+    revertBlunder,
     setGameState,
   } = useGameStore();
 
@@ -47,6 +52,13 @@ export default function GamePage() {
   }, [socket, router]);
 
   const isYourTurn = socket?.id === currentTurn;
+
+  const handleRevertBlunder = async () => {
+    const result = await revertBlunder();
+    if (!result.success) {
+      alert('Failed to revert move: ' + result.error);
+    }
+  };
 
   const handleCardClick = (card: Card) => {
     if (isYourTurn) {
@@ -342,6 +354,15 @@ export default function GamePage() {
       <SuitSelectionModal 
         isOpen={showSuitModal}
         onSelect={handleSuitSelect}
+      />
+
+      {/* Blunder Modal */}
+      <BlunderModal
+        isOpen={blunderActive && blunderReason !== null}
+        reason={blunderReason || ''}
+        timeLeft={blunderTimeLeft}
+        onRevert={handleRevertBlunder}
+        onClose={() => {}}
       />
 
       {/* Game Over Modal */}
