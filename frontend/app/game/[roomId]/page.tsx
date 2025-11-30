@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Zap, Shield } from 'lucide-react';
+import { ArrowLeft, Zap, Shield, Play, AlertTriangle, Hand } from 'lucide-react';
 import { motion } from 'framer-motion';
 import CardHand from '@/components/CardHand';
 import PlayerList from '@/components/PlayerList';
 import Background from '@/components/Background';
 import { useGameStore } from '@/lib/store';
+import type { Card } from '@/types/game.types';
 
 export default function GamePage() {
   const params = useParams();
@@ -20,7 +21,12 @@ export default function GamePage() {
     yourCards,
     players,
     currentTurn,
+    playCard,
+    takePunishment,
+    callCrazy,
   } = useGameStore();
+
+  const [selectedCards, setSelectedCards] = useState<Card[]>([]);
 
   useEffect(() => {
     if (!socket) {
@@ -30,10 +36,44 @@ export default function GamePage() {
 
   const isYourTurn = socket?.id === currentTurn;
 
-  const handleCardClick = (card: any) => {
+  const handleCardClick = (card: Card) => {
     if (isYourTurn) {
-      console.log('Card clicked:', card);
-      // TODO: Implement card play logic
+      setSelectedCards(prev => {
+        const isSelected = prev.some(c => c.id === card.id);
+        if (isSelected) {
+          return prev.filter(c => c.id !== card.id);
+        } else {
+          return [...prev, card];
+        }
+      });
+    }
+  };
+
+  const handlePlayCards = async () => {
+    if (selectedCards.length === 0) return;
+    
+    const result = await playCard(selectedCards);
+    if (result.success) {
+      setSelectedCards([]);
+    } else {
+      alert(result.error);
+    }
+  };
+
+  const handleTakePunishment = async () => {
+    const result = await takePunishment();
+    if (!result.success) {
+      alert(result.error);
+    }
+  };
+
+  const handleCallCrazy = async () => {
+    const targetId = prompt("Enter player ID to call crazy on:");
+    if (targetId) {
+      const result = await callCrazy(targetId);
+      if (!result.success) {
+        alert(result.error);
+      }
     }
   };
 
@@ -109,12 +149,46 @@ export default function GamePage() {
 
             {/* Player Hand */}
             <div className="glass-panel p-6">
-              <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                <span className="text-cyber-primary">///</span> 
-                YOUR HAND <span className="text-gray-500 text-sm font-mono">({yourCards.length})</span>
-              </h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <span className="text-cyber-primary">///</span> 
+                  YOUR HAND <span className="text-gray-500 text-sm font-mono">({yourCards.length})</span>
+                </h2>
+                
+                {isYourTurn && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleTakePunishment}
+                      className="btn-secondary px-4 py-2 text-sm flex items-center gap-2"
+                      title="Take Punishment"
+                    >
+                      <Hand size={16} />
+                      <span className="hidden sm:inline">TAKE</span>
+                    </button>
+                    <button
+                      onClick={handleCallCrazy}
+                      className="btn-secondary px-4 py-2 text-sm flex items-center gap-2 border-cyber-warning text-cyber-warning hover:bg-cyber-warning/10"
+                      title="Call Crazy"
+                    >
+                      <AlertTriangle size={16} />
+                      <span className="hidden sm:inline">CRAZY</span>
+                    </button>
+                    <button
+                      onClick={handlePlayCards}
+                      disabled={selectedCards.length === 0}
+                      className="btn-primary px-4 py-2 text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Play Selected Cards"
+                    >
+                      <Play size={16} />
+                      <span className="hidden sm:inline">PLAY</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+              
               <CardHand
                 cards={yourCards}
+                selectedCards={selectedCards}
                 onCardClick={handleCardClick}
                 disabled={!isYourTurn}
               />

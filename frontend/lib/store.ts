@@ -29,6 +29,9 @@ interface GameStore {
   createRoom: () => Promise<{ success: boolean; roomId?: string; error?: string }>;
   joinRoom: (roomId: string) => Promise<{ success: boolean; error?: string }>;
   startGame: (cardsPerPlayer: number, customRules?: string) => Promise<{ success: boolean; error?: string }>;
+  playCard: (cards: Card[], chosenSuit?: string) => Promise<{ success: boolean; error?: string }>;
+  takePunishment: () => Promise<{ success: boolean; error?: string }>;
+  callCrazy: (targetPlayerId: string) => Promise<{ success: boolean; error?: string }>;
   setGameState: (state: Partial<GameStore>) => void;
 }
 
@@ -150,6 +153,63 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
 
       socket.emit('start-game', { roomId, cardsPerPlayer, customRules }, (response: any) => {
+        if (response.success) {
+          resolve({ success: true });
+        } else {
+          resolve({ success: false, error: response.error });
+        }
+      });
+    });
+  },
+
+  playCard: (cards: Card[], chosenSuit?: string): Promise<{ success: boolean; error?: string }> => {
+    return new Promise((resolve) => {
+      const { socket, roomId } = get();
+      
+      if (!socket || !roomId) {
+        resolve({ success: false, error: 'Not in a room' });
+        return;
+      }
+
+      socket.emit('play-card', { roomId, cards, chosenSuit }, (response: any) => {
+        if (response.success) {
+          resolve({ success: true });
+        } else {
+          resolve({ success: false, error: response.error });
+        }
+      });
+    });
+  },
+
+  takePunishment: (): Promise<{ success: boolean; error?: string }> => {
+    return new Promise((resolve) => {
+      const { socket, roomId } = get();
+      
+      if (!socket || !roomId) {
+        resolve({ success: false, error: 'Not in a room' });
+        return;
+      }
+
+      socket.emit('take-punishment', { roomId }, (response: any) => {
+        if (response.success) {
+          resolve({ success: true });
+        } else {
+          resolve({ success: false, error: response.error });
+        }
+      });
+    });
+  },
+
+  callCrazy: (targetPlayerId: string): Promise<{ success: boolean; error?: string }> => {
+    return new Promise((resolve) => {
+      const { socket, roomId } = get();
+      
+      if (!socket || !roomId) {
+        resolve({ success: false, error: 'Not in a room' });
+        return;
+      }
+
+      socket.emit('call-crazy', { roomId, targetPlayerId }, (response: any) => {
         if (response.success) {
           resolve({ success: true });
         } else {

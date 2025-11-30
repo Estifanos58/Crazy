@@ -5,6 +5,7 @@ interface CardComponentProps {
   card: Card;
   onClick?: () => void;
   disabled?: boolean;
+  isSelected?: boolean;
 }
 
 const SUIT_SYMBOLS = {
@@ -21,7 +22,7 @@ const SUIT_COLORS = {
   spades: 'text-cyber-primary drop-shadow-[0_0_5px_rgba(0,243,255,0.8)]',
 };
 
-export default function CardComponent({ card, onClick, disabled = false }: CardComponentProps) {
+export default function CardComponent({ card, onClick, disabled = false, isSelected = false }: CardComponentProps) {
   const suitSymbol = SUIT_SYMBOLS[card.suit];
   const suitColor = SUIT_COLORS[card.suit];
 
@@ -35,6 +36,7 @@ export default function CardComponent({ card, onClick, disabled = false }: CardC
         ${!disabled && onClick 
           ? 'hover:scale-110 hover:shadow-[0_0_20px_rgba(0,243,255,0.4)] hover:border-cyber-primary cursor-pointer z-10' 
           : ''}
+        ${isSelected ? '-translate-y-6 shadow-[0_0_30px_rgba(0,243,255,0.6)] border-cyber-primary scale-105 z-20' : ''}
         ${disabled ? 'opacity-50 cursor-not-allowed grayscale' : ''}
         bg-cyber-dark/90 backdrop-blur-md border-cyber-primary/30
       `}
