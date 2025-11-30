@@ -62,8 +62,20 @@ const saveStateToStorage = (state: Partial<GameStore>) => {
       roomId: state.roomId,
       isCreator: state.isCreator,
       gameStarted: state.gameStarted,
+      // Save full game state for better reconnection
+      yourCards: state.yourCards,
+      currentTurn: state.currentTurn,
+      currentSuit: state.currentSuit,
+      topCard: state.topCard,
+      punishmentChain: state.punishmentChain,
+      players: state.players,
+      activePlayers: state.activePlayers,
+      finishedPlayers: state.finishedPlayers,
+      gameOver: state.gameOver,
+      lastPlayerId: state.lastPlayerId,
     };
     sessionStorage.setItem('crazy-game-state', JSON.stringify(stateToSave));
+    console.log('💾 State saved to storage');
   } catch (error) {
     console.error('Failed to save state:', error);
   }
@@ -141,6 +153,26 @@ export const useGameStore = create<GameStore>((set, get) => ({
         console.log('🔄 Attempting to restore session...');
         const { username, avatar, roomId, isCreator } = savedState;
         
+        // Immediately restore local state to prevent blank screen
+        set({
+          username,
+          avatar,
+          roomId,
+          isCreator,
+          gameStarted: savedState.gameStarted || false,
+          yourCards: savedState.yourCards || [],
+          currentTurn: savedState.currentTurn || null,
+          currentSuit: savedState.currentSuit || null,
+          topCard: savedState.topCard || null,
+          punishmentChain: savedState.punishmentChain || null,
+          players: savedState.players || [],
+          activePlayers: savedState.activePlayers || [],
+          finishedPlayers: savedState.finishedPlayers || [],
+          gameOver: savedState.gameOver || false,
+          lastPlayerId: savedState.lastPlayerId || null,
+        });
+        console.log('✅ Local state restored from storage');
+        
         // Try to rejoin the room
         socket.emit('rejoin-room', { roomId, username, avatar }, (response: any) => {
           if (response.success) {
@@ -159,18 +191,26 @@ export const useGameStore = create<GameStore>((set, get) => ({
             if (response.room.gameStarted) {
               socket.emit('get-game-state', { roomId }, (stateResponse: any) => {
                 if (stateResponse.success) {
-                  const data = stateResponse.state;
+                  const data = stateResponse.gameState;
+                  console.log('🎮 Game state restored:', data);
                   set({
-                    yourCards: data.yourCards,
+                    gameStarted: true,
+                    yourCards: data.yourCards || [],
                     currentTurn: data.currentTurn,
                     currentSuit: data.currentSuit || null,
                     topCard: data.topCard || null,
                     punishmentChain: data.punishmentChain || null,
-                    players: data.players,
-                    activePlayers: data.players.filter((p: any) => 
+                    players: data.players || [],
+                    activePlayers: (data.players || []).filter((p: any) => 
                       p.cardCount > 0 && !get().finishedPlayers.some(fp => fp.id === p.id)
                     ),
+                    gameOver: data.gameOver || false,
                   });
+                  
+                  // Save restored state
+                  saveStateToStorage(get());
+                } else {
+                  console.error('Failed to get game state:', stateResponse.error);
                 }
               });
             }
@@ -218,6 +258,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       set({ players: data.players });
     });
 
+    socket.on('player-rejoined', (data: { player: Player; players: Player[] }) => {
+      console.log('🔄 Player rejoined:', data.player);
+      set({ players: data.players });
+      // Save updated players list
+      saveStateToStorage(get());
+    });
+
     socket.on('game-started', (data: GameState) => {
       console.log('🎮 Game started!');
       const newState = {
@@ -243,7 +290,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         p.cardCount > 0 && !get().finishedPlayers.some(fp => fp.id === p.id)
       );
       
-      set({
+      const updatedState = {
         yourCards: data.yourCards,
         currentTurn: data.currentTurn,
         currentSuit: data.currentSuit || null,
@@ -251,7 +298,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
         punishmentChain: data.punishmentChain || null,
         players: data.players,
         activePlayers: newActive,
-      });
+      };
+      
+      set(updatedState);
+      
+      // Save state after each update
+      saveStateToStorage(get());
     });
 
     socket.on('game-event', (event: any) => {
