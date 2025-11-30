@@ -24,6 +24,7 @@ interface GameStore {
   topCard: Card | null;
   punishmentChain: { active: boolean; amount: number; cards: Card[] } | null;
   players: Player[];
+  lastPlayerId: string | null;
   
   // Actions
   connect: () => void;
@@ -55,6 +56,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   topCard: null,
   punishmentChain: null,
   players: [],
+  lastPlayerId: null,
 
   connect: () => {
     const socket = io(BACKEND_URL);
@@ -101,8 +103,60 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     socket.on('game-event', (event: any) => {
       console.log('🎯 Game event:', event);
-      // Handle specific game events (card played, punishment taken, etc.)
-      // You can add toast notifications or animations here
+      
+      const { toast } = require('sonner');
+      const players = get().players;
+      const getPlayerName = (id: string) => players.find(p => p.id === id)?.username || 'Unknown';
+
+      switch (event.type) {
+        case 'card-played':
+          const cardText = event.payload.cards.length === 1 
+            ? `${event.payload.cards[0].rank} of ${event.payload.cards[0].suit}`
+            : `${event.payload.cards.length} cards`;
+          toast.info(`${getPlayerName(event.payload.playerId)} played ${cardText}`);
+          set({ lastPlayerId: event.payload.playerId });
+          break;
+        
+        case 'punishment-taken':
+          toast.warning(`${getPlayerName(event.payload.playerId)} took ${event.payload.amount} punishment card(s)`);
+          break;
+        
+        case 'punishment-chain-started':
+          toast.error(`⚠️ Punishment chain started! ${event.payload.amount} cards`);
+          break;
+        
+        case 'punishment-chain-increased':
+          toast.error(`⚠️ Punishment chain increased to ${event.payload.amount} cards!`);
+          break;
+        
+        case 'turn-reversed':
+          toast.info('🔄 Turn direction reversed!');
+          break;
+        
+        case 'player-skipped':
+          toast.info(`⏭️ ${getPlayerName(event.payload.playerId)} was skipped`);
+          break;
+        
+        case 'suit-changed':
+          const suitSymbols = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
+          toast.info(`Suit changed to ${suitSymbols[event.payload.suit as keyof typeof suitSymbols]} ${event.payload.suit}`);
+          break;
+        
+        case 'crazy-called':
+          if (event.payload.success) {
+            toast.success(`${getPlayerName(event.payload.callerId)} called CRAZY on ${getPlayerName(event.payload.targetId)}! They take ${event.payload.penalty} cards`);
+          } else {
+            toast.error(`${getPlayerName(event.payload.callerId)} failed to call CRAZY! They take ${event.payload.penalty} cards`);
+          }
+          break;
+        
+        case 'invalid-move':
+          toast.error(`Invalid move: ${event.payload.reason}`);
+          break;
+        
+        default:
+          console.log('Unhandled event:', event);
+      }
     });
 
     set({ socket });

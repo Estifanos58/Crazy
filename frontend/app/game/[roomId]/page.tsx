@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import CardHand from '@/components/CardHand';
 import PlayerList from '@/components/PlayerList';
 import Background from '@/components/Background';
+import SuitSelectionModal from '@/components/SuitSelectionModal';
 import { useGameStore } from '@/lib/store';
 import type { Card } from '@/types/game.types';
 
@@ -24,12 +25,15 @@ export default function GamePage() {
     currentSuit,
     topCard,
     punishmentChain,
+    lastPlayerId,
     playCard,
     takePunishment,
     callCrazy,
   } = useGameStore();
 
   const [selectedCards, setSelectedCards] = useState<Card[]>([]);
+  const [showSuitModal, setShowSuitModal] = useState(false);
+  const [pendingCards, setPendingCards] = useState<Card[]>([]);
 
   useEffect(() => {
     if (!socket) {
@@ -55,9 +59,30 @@ export default function GamePage() {
   const handlePlayCards = async () => {
     if (selectedCards.length === 0) return;
     
+    // Check if playing a single suit-changing card (8 or J)
+    const isSuitChangingCard = selectedCards.length === 1 && 
+      (selectedCards[0].rank === '8' || selectedCards[0].rank === 'J');
+    
+    if (isSuitChangingCard) {
+      setPendingCards(selectedCards);
+      setShowSuitModal(true);
+      return;
+    }
+    
     const result = await playCard(selectedCards);
     if (result.success) {
       setSelectedCards([]);
+    } else {
+      alert(result.error);
+    }
+  };
+
+  const handleSuitSelect = async (suit: 'hearts' | 'diamonds' | 'clubs' | 'spades') => {
+    setShowSuitModal(false);
+    const result = await playCard(pendingCards, suit);
+    if (result.success) {
+      setSelectedCards([]);
+      setPendingCards([]);
     } else {
       alert(result.error);
     }
@@ -71,8 +96,18 @@ export default function GamePage() {
   };
 
   const handleCallCrazy = async () => {
-    const targetId = prompt("Enter player ID to call crazy on:");
-    if (targetId) {
+    // Get the previous player (the one who just played)
+    const targetId = lastPlayerId;
+    
+    if (!targetId) {
+      alert('No previous player to call crazy on');
+      return;
+    }
+    
+    const targetPlayer = players.find(p => p.id === targetId);
+    const confirmed = confirm(`Call CRAZY on ${targetPlayer?.username || 'previous player'}?`);
+    
+    if (confirmed) {
       const result = await callCrazy(targetId);
       if (!result.success) {
         alert(result.error);
@@ -250,6 +285,12 @@ export default function GamePage() {
           </div>
         </div>
       </div>
+
+      {/* Suit Selection Modal */}
+      <SuitSelectionModal 
+        isOpen={showSuitModal}
+        onSelect={handleSuitSelect}
+      />
     </main>
   );
 }
