@@ -6,6 +6,7 @@ import { Gamepad2, Users, Zap, Globe, Smartphone } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Modal from '@/components/Modal';
 import UserInfoModal from '@/components/UserInfoModal';
+import JoinGameModal from '@/components/JoinGameModal';
 import { useGameStore } from '@/lib/store';
 import Background from '@/components/Background';
 import HolographicCard from '@/components/HolographicCard';
@@ -16,11 +17,26 @@ export default function Home() {
   const [showGameSelect, setShowGameSelect] = useState(false);
   const [showModeSelect, setShowModeSelect] = useState(false);
   const [showUserInfo, setShowUserInfo] = useState(false);
+  const [showJoinGameModal, setShowJoinGameModal] = useState(false);
+  const [joinMode, setJoinMode] = useState<'create' | 'join'>('create');
+  const [targetRoomId, setTargetRoomId] = useState<string | null>(null);
   
-  const { connect, setUserInfo, createRoom } = useGameStore();
+  const { connect, setUserInfo, createRoom, joinRoom } = useGameStore();
 
   const handlePlayClick = () => {
     setShowGameSelect(true);
+  };
+
+  const handleJoinClick = () => {
+    setShowJoinGameModal(true);
+  };
+
+  const handleJoinSubmit = (roomId: string) => {
+    setTargetRoomId(roomId);
+    setShowJoinGameModal(false);
+    setJoinMode('join');
+    setShowUserInfo(true);
+    connect();
   };
 
   const handleGameSelect = () => {
@@ -33,6 +49,7 @@ export default function Home() {
       alert('Single player mode coming soon!');
       return;
     }
+    setJoinMode('create');
     setShowModeSelect(false);
     setShowUserInfo(true);
     connect();
@@ -41,12 +58,22 @@ export default function Home() {
   const handleUserInfoSubmit = async (username: string, avatar: string) => {
     setUserInfo(username, avatar);
     
-    const result = await createRoom();
-    
-    if (result.success && result.roomId) {
-      router.push(`/room/${result.roomId}`);
-    } else {
-      alert('Failed to create room: ' + result.error);
+    if (joinMode === 'create') {
+      const result = await createRoom();
+      
+      if (result.success && result.roomId) {
+        router.push(`/room/${result.roomId}`);
+      } else {
+        alert('Failed to create room: ' + result.error);
+      }
+    } else if (joinMode === 'join' && targetRoomId) {
+      const result = await joinRoom(targetRoomId);
+      
+      if (result.success) {
+        router.push(`/room/${targetRoomId}`);
+      } else {
+        alert('Failed to join room: ' + result.error);
+      }
     }
   };
 
@@ -79,17 +106,31 @@ export default function Home() {
             </p>
           </motion.div>
 
-          <motion.button
-            onClick={handlePlayClick}
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            transition={{ delay: 0.4 }}
-            className="btn-primary text-xl px-12 py-6 shadow-[0_0_30px_rgba(0,243,255,0.3)]"
-          >
-            INITIALIZE GAME
-          </motion.button>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+            <motion.button
+              onClick={handlePlayClick}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ delay: 0.4 }}
+              className="btn-primary text-xl px-12 py-6 shadow-[0_0_30px_rgba(0,243,255,0.3)]"
+            >
+              INITIALIZE GAME
+            </motion.button>
+
+            <motion.button
+              onClick={handleJoinClick}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ delay: 0.5 }}
+              className="btn-secondary text-xl px-12 py-6"
+            >
+              JOIN GAME
+            </motion.button>
+          </div>
         </div>
 
         {/* Visual Hook */}
@@ -180,7 +221,22 @@ export default function Home() {
         onClose={() => setShowUserInfo(false)}
         title="IDENTITY VERIFICATION"
       >
-        <UserInfoModal onSubmit={handleUserInfoSubmit} />
+        <UserInfoModal 
+          onSubmit={handleUserInfoSubmit} 
+          isJoining={joinMode === 'join'}
+        />
+      </Modal>
+
+      {/* Join Game Modal */}
+      <Modal
+        isOpen={showJoinGameModal}
+        onClose={() => setShowJoinGameModal(false)}
+        title="JOIN PROTOCOL"
+      >
+        <JoinGameModal
+          onJoin={handleJoinSubmit}
+          onCancel={() => setShowJoinGameModal(false)}
+        />
       </Modal>
     </main>
   );
