@@ -32,6 +32,18 @@ export interface GameRoom {
 export interface GameState {
   yourCards: Card[];
   currentTurn: string;
-  rules: GameRules;
+  currentSuit?: Suit;
+  topCard?: Card | null;
+  punishmentChain?: {
+    active: boolean;
+    amount: number;
+    cards: Card[];
+  };
+  rules?: GameRules;
   players: Player[];
+}
+
+export interface GameEvent {
+  type: string;
+  payload: any;
 }

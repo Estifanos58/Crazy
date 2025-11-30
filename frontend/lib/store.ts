@@ -20,6 +20,9 @@ interface GameStore {
   gameStarted: boolean;
   yourCards: Card[];
   currentTurn: string | null;
+  currentSuit: string | null;
+  topCard: Card | null;
+  punishmentChain: { active: boolean; amount: number; cards: Card[] } | null;
   players: Player[];
   
   // Actions
@@ -48,6 +51,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   gameStarted: false,
   yourCards: [],
   currentTurn: null,
+  currentSuit: null,
+  topCard: null,
+  punishmentChain: null,
   players: [],
 
   connect: () => {
@@ -74,8 +80,29 @@ export const useGameStore = create<GameStore>((set, get) => ({
         gameStarted: true,
         yourCards: data.yourCards,
         currentTurn: data.currentTurn,
+        currentSuit: data.currentSuit || null,
+        topCard: data.topCard || null,
+        punishmentChain: data.punishmentChain || null,
         players: data.players,
       });
+    });
+
+    socket.on('game-update', (data: GameState) => {
+      console.log('🔄 Game state updated:', data);
+      set({
+        yourCards: data.yourCards,
+        currentTurn: data.currentTurn,
+        currentSuit: data.currentSuit || null,
+        topCard: data.topCard || null,
+        punishmentChain: data.punishmentChain || null,
+        players: data.players,
+      });
+    });
+
+    socket.on('game-event', (event: any) => {
+      console.log('🎯 Game event:', event);
+      // Handle specific game events (card played, punishment taken, etc.)
+      // You can add toast notifications or animations here
     });
 
     set({ socket });

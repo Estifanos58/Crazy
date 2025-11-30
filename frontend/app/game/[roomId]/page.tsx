@@ -21,6 +21,9 @@ export default function GamePage() {
     yourCards,
     players,
     currentTurn,
+    currentSuit,
+    topCard,
+    punishmentChain,
     playCard,
     takePunishment,
     callCrazy,
@@ -124,25 +127,62 @@ export default function GamePage() {
             {/* Game Board */}
             <div className="glass-panel p-6 relative overflow-hidden min-h-[400px] flex flex-col">
               <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10" />
-              <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2 relative z-10">
-                <Shield className="text-cyber-secondary" size={20} />
-                ACTIVE BATTLEFIELD
-              </h2>
+              <div className="flex justify-between items-center mb-4 relative z-10">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Shield className="text-cyber-secondary" size={20} />
+                  ACTIVE BATTLEFIELD
+                </h2>
+                {currentSuit && (
+                  <div className="flex items-center gap-2 text-cyber-primary">
+                    <span className="text-sm font-mono">SUIT:</span>
+                    <span className="text-2xl">
+                      {currentSuit === 'hearts' && '♥'}
+                      {currentSuit === 'diamonds' && '♦'}
+                      {currentSuit === 'clubs' && '♣'}
+                      {currentSuit === 'spades' && '♠'}
+                    </span>
+                  </div>
+                )}
+              </div>
               
               <div className="flex-1 flex items-center justify-center relative z-10">
                 <div className="w-full h-full border-2 border-dashed border-white/10 rounded-xl flex items-center justify-center bg-cyber-black/20 backdrop-blur-sm">
-                  <div className="text-center">
-                    <motion.div 
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                      className="text-6xl mb-4 opacity-50 grayscale"
-                    >
-                      🎴
-                    </motion.div>
-                    <p className="text-xl font-mono text-cyber-primary/80 uppercase tracking-wider">
-                      {isYourTurn ? '>> AWAITING_INPUT <<' : '>> SYNCHRONIZING... <<'}
-                    </p>
-                  </div>
+                  {topCard ? (
+                    <div className="text-center">
+                      <div className="mb-4">
+                        <div className="text-6xl font-bold text-white">{topCard.rank}</div>
+                        <div className="text-4xl mt-2">
+                          {topCard.suit === 'hearts' && <span className="text-cyber-warning">♥</span>}
+                          {topCard.suit === 'diamonds' && <span className="text-cyber-warning">♦</span>}
+                          {topCard.suit === 'clubs' && <span className="text-cyber-primary">♣</span>}
+                          {topCard.suit === 'spades' && <span className="text-cyber-primary">♠</span>}
+                        </div>
+                      </div>
+                      {punishmentChain?.active && (
+                        <motion.div
+                          initial={{ scale: 0.9 }}
+                          animate={{ scale: 1.1 }}
+                          transition={{ repeat: Infinity, duration: 0.5, repeatType: 'reverse' }}
+                          className="text-cyber-warning font-bold mt-4"
+                        >
+                          ⚠ PUNISHMENT CHAIN: {punishmentChain.amount} CARDS
+                        </motion.div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <motion.div 
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                        className="text-6xl mb-4 opacity-50 grayscale"
+                      >
+                        🎴
+                      </motion.div>
+                      <p className="text-xl font-mono text-cyber-primary/80 uppercase tracking-wider">
+                        {isYourTurn ? '>> AWAITING_INPUT <<' : '>> SYNCHRONIZING... <<'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -153,6 +193,11 @@ export default function GamePage() {
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
                   <span className="text-cyber-primary">///</span> 
                   YOUR HAND <span className="text-gray-500 text-sm font-mono">({yourCards.length})</span>
+                  {selectedCards.length > 0 && (
+                    <span className="text-cyber-accent text-sm font-mono animate-pulse">
+                      [{selectedCards.length} SELECTED]
+                    </span>
+                  )}
                 </h2>
                 
                 {isYourTurn && (
@@ -197,7 +242,11 @@ export default function GamePage() {
 
           {/* Sidebar */}
           <div className="glass-panel p-6 h-fit">
-            <PlayerList players={players} currentUserId={socket?.id} />
+            <PlayerList 
+              players={players} 
+              currentUserId={socket?.id}
+              currentTurn={currentTurn}
+            />
           </div>
         </div>
       </div>
