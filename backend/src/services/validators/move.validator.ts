@@ -43,11 +43,11 @@ export class MoveValidator {
 
     // Check punishment chain
     if (gameState.punishmentChain.active) {
-      const canRespond = this.canRespondToPunishment(cards, config);
+      const canRespond = this.canRespondToPunishment(cards, config, gameState);
       if (!canRespond) {
         return {
           valid: false,
-          errors: ['Must play A♠ or 2 to respond to punishment'],
+          errors: ['Must play A♠ or 2 of the same suit to respond to punishment'],
           canChallengeCrazy: false,
         };
       }
@@ -66,19 +66,36 @@ export class MoveValidator {
   /**
    * Check if cards can respond to punishment
    */
-  private static canRespondToPunishment(cards: Card[], config: RuleConfig): boolean {
+  private static canRespondToPunishment(
+    cards: Card[], 
+    config: RuleConfig,
+    gameState: GameState
+  ): boolean {
     if (cards.length !== 1) return false;
     
     const card = cards[0];
 
-    // Check if it's A♠
+    // Check if it's A♠ (can respond to any punishment)
     if (card.rank === config.punishment.aceSpadeCard.rank && 
         card.suit === config.punishment.aceSpadeCard.suit) {
       return true;
     }
 
-    // Check if it's a 2
+    // Check if it's a 2 - must be same suit as the punishment initiator
     if (config.punishment.rank2Cards.includes(card.rank)) {
+      // Get the last card in the punishment chain
+      const punishmentCards = gameState.punishmentChain.cards;
+      if (punishmentCards.length > 0) {
+        const lastPunishmentCard = punishmentCards[punishmentCards.length - 1];
+        // If punishment started with A♠, any 2 of spades can respond
+        if (lastPunishmentCard.rank === config.punishment.aceSpadeCard.rank &&
+            lastPunishmentCard.suit === config.punishment.aceSpadeCard.suit) {
+          return card.suit === 'spades';
+        }
+        // Otherwise, 2 must match the suit of the last punishment card
+        return card.suit === lastPunishmentCard.suit;
+      }
+      // If no cards in chain yet, any 2 can start it
       return true;
     }
 
@@ -100,7 +117,23 @@ export class MoveValidator {
       };
     }
 
-    // Must have a skip card
+    // Check if any card is a suit-changing card (J or 8)
+    const hasSuitChangeCard = cards.some(c => 
+      config.specialCards.suitChangeCards.some(sc => 
+        sc.rank === c.rank && (!sc.suit || sc.suit === c.suit)
+      )
+    );
+
+    // Suit-changing cards (J, 8) CANNOT be played with other cards
+    if (hasSuitChangeCard) {
+      return {
+        valid: false,
+        errors: ['Suit-changing cards (J, 8) must be played alone'],
+        canChallengeCrazy: config.crazyChallenge.enabled,
+      };
+    }
+
+    // Must have a skip card (7)
     const hasSkipCard = cards.some(c => 
       config.specialCards.skipCards.some(skip => 
         (!skip.suit || skip.suit === c.suit) && skip.rank === c.rank
@@ -123,7 +156,7 @@ export class MoveValidator {
       return {
         valid: false,
         errors: ['All cards must be same suit'],
-        canChallengeCrazy: false,
+        canChallengeCrazy: config.crazyChallenge.enabled,
       };
     }
 

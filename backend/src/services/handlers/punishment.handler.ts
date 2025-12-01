@@ -20,11 +20,11 @@ export class PunishmentChainManager {
     const isRank2 = config.punishment.rank2Cards.includes(card.rank);
 
     if (isAceSpade) {
-      return this.handleAceSpade(chain, config, events);
+      return this.handleAceSpade(chain, config, events, card);
     } else if (isRank2 && chain.active) {
-      return this.handleRank2OnActiveChain(chain, config, events);
+      return this.handleRank2OnActiveChain(chain, config, events, card);
     } else if (isRank2 && !chain.active) {
-      return this.handleRank2StartChain(chain, config, events);
+      return this.handleRank2StartChain(chain, config, events, card);
     } else if (chain.active) {
       return this.handleChainEnd(chain, events);
     }
@@ -38,11 +38,13 @@ export class PunishmentChainManager {
   private static handleAceSpade(
     chain: GameState['punishmentChain'],
     config: RuleConfig,
-    events: GameEvent[]
+    events: GameEvent[],
+    card: Card
   ) {
     if (chain.active) {
-      // A♠ ends punishment and starts new one
+      // A♠ resets punishment and starts new one
       chain.amount = config.punishment.aceSpadePenalty;
+      chain.cards = [card];
       events.push({
         type: 'punishment-chain-started',
         payload: { amount: chain.amount },
@@ -51,12 +53,7 @@ export class PunishmentChainManager {
       // Start new punishment chain
       chain.active = true;
       chain.amount = config.punishment.aceSpadePenalty;
-      const aceCard = config.punishment.aceSpadeCard;
-      chain.cards = [{
-        rank: aceCard.rank,
-        suit: aceCard.suit as Suit,
-        id: `${aceCard.rank}-${aceCard.suit}`
-      }];
+      chain.cards = [card];
       events.push({
         type: 'punishment-chain-started',
         payload: { amount: chain.amount },
@@ -72,9 +69,11 @@ export class PunishmentChainManager {
   private static handleRank2OnActiveChain(
     chain: GameState['punishmentChain'],
     config: RuleConfig,
-    events: GameEvent[]
+    events: GameEvent[],
+    card: Card
   ) {
     chain.amount += config.punishment.rank2Penalty;
+    chain.cards.push(card); // Track the 2 card added to chain
     events.push({
       type: 'punishment-chain-increased',
       payload: { amount: chain.amount },
@@ -89,11 +88,12 @@ export class PunishmentChainManager {
   private static handleRank2StartChain(
     chain: GameState['punishmentChain'],
     config: RuleConfig,
-    events: GameEvent[]
+    events: GameEvent[],
+    card: Card
   ) {
     chain.active = true;
     chain.amount = config.punishment.rank2Penalty;
-    chain.cards = [];
+    chain.cards = [card]; // Track the 2 card that started the chain
     events.push({
       type: 'punishment-chain-started',
       payload: { amount: chain.amount },
