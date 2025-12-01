@@ -43,6 +43,7 @@ export default function GamePage() {
     isCreator,
     username,
     avatar,
+    drawCount,
   } = useGameStore();
 
   const [selectedCards, setSelectedCards] = useState<Card[]>([]);
@@ -293,11 +294,29 @@ export default function GamePage() {
                   <div className="flex gap-2">
                     <button
                       onClick={handleTakePunishment}
-                      className="btn-secondary px-4 py-2 text-sm flex items-center gap-2"
-                      title="Take Punishment"
+                      className={`btn-secondary px-4 py-2 text-sm flex items-center gap-2 ${
+                        punishmentChain?.active 
+                          ? 'border-cyber-warning text-cyber-warning hover:bg-cyber-warning/10' 
+                          : drawCount === 1
+                          ? 'border-cyber-accent text-cyber-accent hover:bg-cyber-accent/10'
+                          : ''
+                      }`}
+                      title={
+                        punishmentChain?.active 
+                          ? `Take ${punishmentChain.amount} Punishment Cards` 
+                          : drawCount === 1 
+                          ? 'Draw again (will pass turn)' 
+                          : 'Draw 1 Card (can draw again)'
+                      }
                     >
                       <Hand size={16} />
-                      <span className="hidden sm:inline">TAKE</span>
+                      <span className="hidden sm:inline">
+                        {punishmentChain?.active 
+                          ? `TAKE (${punishmentChain.amount})` 
+                          : drawCount === 1 
+                          ? 'PASS' 
+                          : 'DRAW'}
+                      </span>
                     </button>
                     <button
                       onClick={handleCallCrazy}
