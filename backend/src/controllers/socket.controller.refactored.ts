@@ -8,6 +8,7 @@ import { PunishmentHandler } from './handlers/punishment.handler';
 import { CrazyCallHandler } from './handlers/crazy-call.handler';
 import { ReconnectionHandler } from './handlers/reconnection.handler';
 import { BlunderHandler } from './handlers/blunder.handler';
+import { LeaveGameHandler } from './handlers/leave-game.handler';
 
 export class SocketController {
   static setupSocketHandlers(io: Server): void {
@@ -24,6 +25,7 @@ export class SocketController {
       PunishmentHandler.handle(socket, io);
       CrazyCallHandler.handle(socket, io);
       BlunderHandler.handle(socket, io);
+      LeaveGameHandler.handle(socket, io);
 
       // Connection management
       ReconnectionHandler.handle(socket, io);
