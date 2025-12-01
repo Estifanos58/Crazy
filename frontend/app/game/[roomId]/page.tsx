@@ -159,11 +159,11 @@ export default function GamePage() {
     // Emit request to start a new game with same players
     socket?.emit('play-again', { roomId }, (response: any) => {
       if (response.success) {
-        // Server will reset the game, redirect to room lobby
-        router.push(`/room/${roomId}`);
+        // Game will start automatically via game-started event
+        // Just close the game over modal by resetting game over state
+        setGameState({ gameOver: false });
       } else {
-        // Fallback: just redirect to room
-        router.push(`/room/${roomId}`);
+        alert('Failed to start new game: ' + response.error);
       }
     });
   };
