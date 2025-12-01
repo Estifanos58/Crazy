@@ -40,12 +40,13 @@ export class PunishmentHandler {
 
         // Check if there's an active punishment chain
         if (gameState.punishmentChain.active && gameState.punishmentChain.amount > 0) {
-          // Take punishment cards - this counts as first draw
-          const result = RuleService.takePunishmentCardsNoAdvance(gameState, socket.id);
+          // Take punishment cards - turn passes immediately after taking punishment
+          const result = RuleService.takePunishmentCards(gameState, socket.id);
           updatedState = result.updatedState;
           events = result.events;
-          room.drawCount = 1; // After taking punishment, they've drawn once
-          console.log(`📥 ${socket.id} took ${gameState.punishmentChain.amount} punishment cards in room ${data.roomId}`);
+          shouldAdvanceTurn = true;
+          room.drawCount = 0; // Reset draw count - turn will pass
+          console.log(`📥 ${socket.id} took ${gameState.punishmentChain.amount} punishment cards in room ${data.roomId} - turn advances`);
         } else {
           // Draw a single card
           room.drawCount++;
