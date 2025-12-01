@@ -305,7 +305,7 @@ export default function GamePage() {
                         punishmentChain?.active 
                           ? `Take ${punishmentChain.amount} Punishment Cards (you stay)` 
                           : drawCount === 1 
-                          ? 'Draw again & pass turn' 
+                          ? 'Pass turn to next player' 
                           : 'Draw 1 Card (you stay)'
                       }
                     >
@@ -314,7 +314,7 @@ export default function GamePage() {
                         {punishmentChain?.active 
                           ? `TAKE (${punishmentChain.amount})` 
                           : drawCount === 1 
-                          ? 'DRAW & PASS' 
+                          ? 'PASS' 
                           : 'DRAW'}
                       </span>
                     </button>
