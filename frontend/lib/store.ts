@@ -476,6 +476,41 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
     });
 
+    socket.on('player-left', (data: { username: string; avatar: string; players: Player[] }) => {
+      console.log('👋 Player left:', data.username);
+      const { toast } = require('sonner');
+      
+      toast.info(`${data.avatar} ${data.username} left the game`, {
+        duration: 4000,
+      });
+      
+      // Update players list
+      set({ players: data.players });
+      
+      // Save updated state
+      saveStateToStorage(get());
+    });
+
+    socket.on('game-terminated', (data: { message: string }) => {
+      console.log('🗑️ Game terminated:', data.message);
+      const { toast } = require('sonner');
+      
+      toast.error('Host has terminated the game', {
+        duration: 5000,
+        className: 'border-2 border-red-500',
+      });
+      
+      // Clear session storage
+      sessionStorage.removeItem('crazy-game-state');
+      
+      // Redirect to home after a short delay
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          window.location.href = '/';
+        }
+      }, 2000);
+    });
+
     set({ socket });
   },
 

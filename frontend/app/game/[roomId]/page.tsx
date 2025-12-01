@@ -10,6 +10,7 @@ import Background from '@/components/Background';
 import SuitSelectionModal from '@/components/SuitSelectionModal';
 import GameOverModal from '@/components/GameOverModal';
 import BlunderModal from '@/components/BlunderModal';
+import { AbortGameModal } from '@/components/AbortGameModal';
 import { useGameStore } from '@/lib/store';
 import type { Card, RankedPlayer } from '@/types/game.types';
 
@@ -39,11 +40,15 @@ export default function GamePage() {
     callCrazy,
     revertBlunder,
     setGameState,
+    isCreator,
+    username,
+    avatar,
   } = useGameStore();
 
   const [selectedCards, setSelectedCards] = useState<Card[]>([]);
   const [showSuitModal, setShowSuitModal] = useState(false);
   const [pendingCards, setPendingCards] = useState<Card[]>([]);
+  const [showAbortModal, setShowAbortModal] = useState(false);
 
   useEffect(() => {
     if (!socket) {
@@ -133,9 +138,20 @@ export default function GamePage() {
   };
 
   const handleLeaveGame = () => {
-    if (confirm('Are you sure you want to leave the game?')) {
-      router.push('/');
+    setShowAbortModal(true);
+  };
+
+  const handleConfirmLeave = () => {
+    if (isCreator) {
+      // Creator terminates the game - emit leave event
+      socket?.emit('leave-game', { roomId, isCreator: true });
+    } else {
+      // Regular player leaves - emit leave event
+      socket?.emit('leave-game', { roomId, isCreator: false, username, avatar });
     }
+    
+    setShowAbortModal(false);
+    router.push('/');
   };
 
   const handlePlayAgain = () => {
@@ -370,6 +386,14 @@ export default function GamePage() {
         isOpen={gameOver}
         rankings={rankings}
         onPlayAgain={handlePlayAgain}
+      />
+
+      {/* Abort Game Modal */}
+      <AbortGameModal
+        isOpen={showAbortModal}
+        isCreator={isCreator}
+        onConfirm={handleConfirmLeave}
+        onCancel={() => setShowAbortModal(false)}
       />
     </main>
   );
