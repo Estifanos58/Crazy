@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Medal, Award, RotateCcw } from 'lucide-react';
+import { Trophy, Medal, Award, RotateCcw, LogOut } from 'lucide-react';
 
 interface RankedPlayer {
   id: string;
@@ -13,6 +13,7 @@ interface GameOverModalProps {
   isOpen: boolean;
   rankings: RankedPlayer[];
   onPlayAgain: () => void;
+  onExit: () => void;
 }
 
 const RANK_COLORS = [
@@ -21,7 +22,7 @@ const RANK_COLORS = [
   { bg: 'bg-amber-700/20', border: 'border-amber-700', text: 'text-amber-700', icon: Award },
 ];
 
-export default function GameOverModal({ isOpen, rankings, onPlayAgain }: GameOverModalProps) {
+export default function GameOverModal({ isOpen, rankings, onPlayAgain, onExit }: GameOverModalProps) {
   if (!isOpen) return null;
 
   return (
@@ -94,19 +95,31 @@ export default function GameOverModal({ isOpen, rankings, onPlayAgain }: GameOve
           </AnimatePresence>
         </div>
 
-        {/* Play Again Button */}
-        <motion.button
+        {/* Action Buttons */}
+        <motion.div
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.5 + rankings.length * 0.1 }}
-          onClick={onPlayAgain}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="w-full btn-primary py-4 text-lg flex items-center justify-center gap-3"
+          className="flex gap-4"
         >
-          <RotateCcw size={24} />
-          <span>PLAY AGAIN</span>
-        </motion.button>
+          <button
+            onClick={onExit}
+            className="flex-1 btn-secondary py-4 text-lg flex items-center justify-center gap-3 border-red-500/50 text-red-400 hover:bg-red-500/10"
+          >
+            <LogOut size={24} />
+            <span>EXIT</span>
+          </button>
+          
+          <motion.button
+            onClick={onPlayAgain}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="flex-1 btn-primary py-4 text-lg flex items-center justify-center gap-3"
+          >
+            <RotateCcw size={24} />
+            <span>PLAY AGAIN</span>
+          </motion.button>
+        </motion.div>
       </motion.div>
     </div>
   );

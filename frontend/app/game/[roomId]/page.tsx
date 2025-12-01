@@ -156,8 +156,28 @@ export default function GamePage() {
   };
 
   const handlePlayAgain = () => {
-    // Reset game state and redirect to room
-    router.push(`/room/${roomId}`);
+    // Emit request to start a new game with same players
+    socket?.emit('play-again', { roomId }, (response: any) => {
+      if (response.success) {
+        // Server will reset the game, redirect to room lobby
+        router.push(`/room/${roomId}`);
+      } else {
+        // Fallback: just redirect to room
+        router.push(`/room/${roomId}`);
+      }
+    });
+  };
+
+  const handleExitGame = () => {
+    // Clear local storage
+    sessionStorage.removeItem('crazy-game-state');
+    
+    // Disconnect and navigate home
+    if (socket) {
+      socket.emit('leave-game', { roomId, isCreator, username, avatar });
+    }
+    
+    router.push('/');
   };
 
   // Create rankings for game over modal
@@ -405,6 +425,7 @@ export default function GamePage() {
         isOpen={gameOver}
         rankings={rankings}
         onPlayAgain={handlePlayAgain}
+        onExit={handleExitGame}
       />
 
       {/* Abort Game Modal */}

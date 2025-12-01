@@ -94,6 +94,38 @@ export const setupGameStateEvents = (socket: Socket, set: SetState, get: GetStat
       }
     }, 2000);
   });
+
+  socket.on('game-reset', (data: { roomId: string; players: Player[] }) => {
+    console.log('🔄 Game reset for play again:', data.roomId);
+    const { toast } = require('sonner');
+    
+    toast.success('Game reset! Ready to play again', {
+      duration: 3000,
+    });
+    
+    // Reset game state but keep user info and room
+    const currentState = get();
+    set({
+      gameStarted: false,
+      yourCards: [],
+      currentTurn: null,
+      currentSuit: null,
+      topCard: null,
+      punishmentChain: null,
+      players: data.players,
+      activePlayers: [],
+      finishedPlayers: [],
+      gameOver: false,
+      drawCount: 0,
+      blunderActive: false,
+      blunderReason: null,
+      blunderPlayerId: null,
+      blunderCards: [],
+      blunderTimeLeft: 0,
+    });
+    
+    saveStateToStorage(get());
+  });
 };
 
 /**
