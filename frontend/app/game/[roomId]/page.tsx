@@ -303,10 +303,10 @@ export default function GamePage() {
                       }`}
                       title={
                         punishmentChain?.active 
-                          ? `Take ${punishmentChain.amount} Punishment Cards` 
+                          ? `Take ${punishmentChain.amount} Punishment Cards (you stay)` 
                           : drawCount === 1 
-                          ? 'Draw again (will pass turn)' 
-                          : 'Draw 1 Card (can draw again)'
+                          ? 'Draw again & pass turn' 
+                          : 'Draw 1 Card (you stay)'
                       }
                     >
                       <Hand size={16} />
@@ -314,7 +314,7 @@ export default function GamePage() {
                         {punishmentChain?.active 
                           ? `TAKE (${punishmentChain.amount})` 
                           : drawCount === 1 
-                          ? 'PASS' 
+                          ? 'DRAW & PASS' 
                           : 'DRAW'}
                       </span>
                     </button>
