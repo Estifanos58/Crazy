@@ -15,8 +15,13 @@ export default function Background() {
   return (
     <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
       {/* Grid Overlay */}
-      <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10" 
-           style={{ backgroundSize: '50px 50px' }}></div>
+      <div 
+        className="absolute inset-0 opacity-20" 
+        style={{ 
+          backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px)',
+          backgroundSize: '50px 50px' 
+        }}
+      />
       
       {/* Floating Hexagons */}
       {[...Array(6)].map((_, i) => {
