@@ -43,10 +43,17 @@ export default function RoomPage() {
   }, [socket, connect]);
 
   useEffect(() => {
-    if (socket && !username) {
+    // Check if current user is already in the players list (reconnection)
+    const isAlreadyInRoom = socket && players.some(p => p.id === socket.id);
+    
+    // Only show user info modal if socket is connected and user hasn't set their info
+    // AND they haven't already joined the room
+    if (socket && !username && !isAlreadyInRoom) {
       setShowUserInfo(true);
+    } else if (username || isAlreadyInRoom) {
+      setShowUserInfo(false);
     }
-  }, [socket, username]);
+  }, [socket, username, players]);
 
   const handleUserInfoSubmit = async (username: string, avatar: string) => {
     setUserInfo(username, avatar);
@@ -210,7 +217,12 @@ export default function RoomPage() {
       {/* User Info Modal */}
       <Modal
         isOpen={showUserInfo}
-        onClose={() => {}}
+        onClose={() => {
+          // Allow closing if user already has info (reconnecting scenario)
+          if (username) {
+            setShowUserInfo(false);
+          }
+        }}
         title="PLAYER IDENTIFICATION"
       >
         <UserInfoModal onSubmit={handleUserInfoSubmit} isJoining />
