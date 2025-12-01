@@ -158,6 +158,61 @@ export class RuleService {
   }
 
   /**
+   * Draw a single card (when player has no playable card)
+   */
+  static drawSingleCard(
+    gameState: GameState,
+    playerId: string
+  ): { updatedState: GameState; events: GameEvent[] } {
+    const newState = GameStateManager.cloneState(gameState);
+    const events: GameEvent[] = [];
+    
+    const player = newState.players.find(p => p.id === playerId);
+    
+    if (!player) {
+      throw new Error('Player not found');
+    }
+
+    // Draw one card from deck
+    if (newState.deck.length === 0) {
+      // Reshuffle pile into deck (keep top card)
+      if (newState.pile.length > 1) {
+        const topCard = newState.pile.pop()!;
+        newState.deck = this.shuffleDeck([...newState.pile]);
+        newState.pile = [topCard];
+      }
+    }
+
+    if (newState.deck.length > 0) {
+      const drawnCard = newState.deck.pop()!;
+      player.cards.push(drawnCard);
+
+      events.push({
+        type: 'cards_drawn',
+        playerId: playerId,
+        amount: 1,
+      });
+    }
+
+    // Advance turn after drawing
+    GameStateManager.advanceTurn(newState);
+
+    return { updatedState: newState, events };
+  }
+
+  /**
+   * Shuffle deck helper
+   */
+  private static shuffleDeck(deck: Card[]): Card[] {
+    const shuffled = [...deck];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+
+  /**
    * Handle illegal turn penalty
    */
   static applyIllegalTurnPenalty(

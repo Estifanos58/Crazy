@@ -5,6 +5,7 @@ import type { GameState } from '../../types/game.types';
 
 export class PunishmentHandler {
   static handle(socket: Socket, io: Server): void {
+    // Handle taking punishment or drawing a single card
     socket.on('take-punishment', async (data: { roomId: string }, callback) => {
       try {
         const room = await RoomService.getRoom(data.roomId);
@@ -28,7 +29,21 @@ export class PunishmentHandler {
           gameEnded: false,
         };
 
-        const { updatedState, events } = RuleService.takePunishmentCards(gameState, socket.id);
+        let events;
+        let updatedState;
+
+        // Check if there's an active punishment chain
+        if (gameState.punishmentChain.active && gameState.punishmentChain.amount > 0) {
+          // Take punishment cards
+          const result = RuleService.takePunishmentCards(gameState, socket.id);
+          updatedState = result.updatedState;
+          events = result.events;
+        } else {
+          // Draw a single card when no playable card
+          const result = RuleService.drawSingleCard(gameState, socket.id);
+          updatedState = result.updatedState;
+          events = result.events;
+        }
 
         room.players = updatedState.players;
         room.deck = updatedState.deck;
@@ -58,9 +73,14 @@ export class PunishmentHandler {
         });
 
         callback({ success: true });
-        console.log(`📥 ${socket.id} took punishment cards in room ${data.roomId}`);
+        
+        if (gameState.punishmentChain.active) {
+          console.log(`📥 ${socket.id} took ${gameState.punishmentChain.amount} punishment cards in room ${data.roomId}`);
+        } else {
+          console.log(`🎴 ${socket.id} drew 1 card in room ${data.roomId}`);
+        }
       } catch (error) {
-        console.error('Error taking punishment:', error);
+        console.error('Error taking punishment/drawing card:', error);
         callback({ success: false, error: (error as Error).message });
       }
     });
