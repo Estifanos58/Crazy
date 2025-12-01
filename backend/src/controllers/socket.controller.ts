@@ -8,6 +8,7 @@ import { CrazyCallHandler } from './handlers/crazy-call.handler';
 import { ReconnectionHandler } from './handlers/reconnection.handler';
 import { BlunderHandler } from './handlers/blunder.handler';
 import { LeaveGameHandler } from './handlers/leave-game.handler';
+import { PlayAgainHandler } from './handlers/play-again.handler';
 
 export class SocketController {
   static setupSocketHandlers(io: Server): void {
@@ -18,6 +19,7 @@ export class SocketController {
       CreateRoomHandler.handle(socket, io);
       JoinRoomHandler.handle(socket, io);
       StartGameHandler.handle(socket, io);
+      PlayAgainHandler.handle(socket, io);
 
       // Game actions
       PlayCardHandler.handle(socket, io);

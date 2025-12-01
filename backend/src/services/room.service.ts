@@ -192,4 +192,35 @@ export class RoomService {
 
     return room;
   }
+
+  static async resetGame(room: GameRoom): Promise<GameRoom | null> {
+    // Keep players and room info, but reset all game state
+    const resetRoom: GameRoom = {
+      ...room,
+      gameStarted: false,
+      deck: [],
+      pile: undefined,
+      currentTurn: undefined,
+      currentSuit: undefined,
+      turnDirection: 'clockwise',
+      punishmentChain: {
+        active: false,
+        amount: 0,
+        cards: [],
+      },
+      drawCount: 0,
+      rules: undefined,
+      ruleConfig: undefined,
+    };
+
+    // Clear all player cards but keep player info
+    resetRoom.players = room.players.map(player => ({
+      ...player,
+      cards: [],
+    }));
+
+    await this.saveRoom(resetRoom);
+    console.log(`🔄 Game state reset for room ${room.roomId}`);
+    return resetRoom;
+  }
 }
