@@ -12,29 +12,45 @@ export class PlayAgainHandler {
           return;
         }
 
-        // Reset the game state while keeping players and room info
-        const resetRoom = await RoomService.resetGame(room);
+        // Get the previous game settings (or use defaults)
+        const cardsPerPlayer = room.rules?.cardsPerPlayer || 7;
+        const customRules = room.rules?.customRules;
+
+        // Start a new game with same players and settings
+        const updatedRoom = await RoomService.startGame({
+          roomId: data.roomId,
+          cardsPerPlayer,
+          customRules,
+          ruleConfig: room.ruleConfig,
+        });
         
-        if (!resetRoom) {
-          callback({ success: false, error: 'Failed to reset game' });
+        if (!updatedRoom) {
+          callback({ success: false, error: 'Failed to start new game' });
           return;
         }
 
-        // Notify all players that the game has been reset
-        io.to(data.roomId).emit('game-reset', {
-          roomId: resetRoom.roomId,
-          players: resetRoom.players.map(p => ({
-            id: p.id,
-            username: p.username,
-            avatar: p.avatar,
-            cardCount: 0,
-          })),
+        // Send private cards to each player (same as start-game handler)
+        updatedRoom.players.forEach(player => {
+          io.to(player.id).emit('game-started', {
+            roomId: updatedRoom.roomId,
+            players: updatedRoom.players.map(p => ({
+              id: p.id,
+              username: p.username,
+              avatar: p.avatar,
+              cardCount: p.cards.length,
+            })),
+            currentTurn: updatedRoom.currentTurn,
+            yourCards: player.cards,
+            topCard: undefined,
+            currentSuit: undefined,
+            punishmentChain: updatedRoom.punishmentChain,
+          });
         });
 
         callback({ success: true });
-        console.log(`🔄 Game reset in room: ${data.roomId}`);
+        console.log(`🔄 New game started in room: ${data.roomId}`);
       } catch (error) {
-        console.error('Error resetting game:', error);
+        console.error('Error starting new game:', error);
         callback({ success: false, error: (error as Error).message });
       }
     });
