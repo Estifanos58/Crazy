@@ -34,7 +34,7 @@ export class PunishmentHandler {
           gameEnded: false,
         };
 
-        let events;
+        let events: any[] = [];
         let updatedState;
         let shouldAdvanceTurn = false;
 
@@ -47,23 +47,26 @@ export class PunishmentHandler {
           room.drawCount = 0; // Reset draw count - player can now draw up to 2 times if needed
           console.log(`📥 ${socket.id} took ${gameState.punishmentChain.amount} punishment cards in room ${data.roomId} - stays current player`);
         } else {
-          // Draw a single card (no punishment active)
-          room.drawCount++;
-          
-          if (room.drawCount >= 2) {
-            // Second draw - advance turn after drawing (player passes)
-            const result = RuleService.drawSingleCard(gameState, socket.id);
-            updatedState = result.updatedState;
-            events = result.events;
+          // No punishment active - handle draw or pass
+          if (room.drawCount >= 1) {
+            // Already drew once - just pass turn (NO additional card drawn)
+            updatedState = { ...gameState };
+            // Advance to next player
+            const currentIndex = gameState.players.findIndex(p => p.id === socket.id);
+            const direction = gameState.turnDirection === 'clockwise' ? 1 : -1;
+            const nextIndex = (currentIndex + direction + gameState.players.length) % gameState.players.length;
+            updatedState.currentTurn = gameState.players[nextIndex].id;
+            events = [];
             shouldAdvanceTurn = true;
             room.drawCount = 0; // Reset for next player
-            console.log(`🎴 ${socket.id} drew 1 card (2nd draw) - PASS, turn advances in room ${data.roomId}`);
+            console.log(`⏭️ ${socket.id} passed turn (no draw) in room ${data.roomId}`);
           } else {
-            // First draw - don't advance turn, player can try to play or draw again
+            // First draw - draw 1 card, don't advance turn
+            room.drawCount = 1;
             const result = RuleService.drawSingleCardNoAdvance(gameState, socket.id);
             updatedState = result.updatedState;
             events = result.events;
-            console.log(`🎴 ${socket.id} drew 1 card (1st draw) - turn stays in room ${data.roomId}`);
+            console.log(`🎴 ${socket.id} drew 1 card - turn stays in room ${data.roomId}`);
           }
         }
 
