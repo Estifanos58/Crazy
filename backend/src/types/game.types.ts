@@ -161,6 +161,7 @@ export interface GameRoom {
   deck: Card[];
   pile?: Card[];
   punishmentChain?: PunishmentChain;
+  drawCount?: number; // Track how many times current player has drawn (0, 1, or 2)
   createdAt: number;
 }
 

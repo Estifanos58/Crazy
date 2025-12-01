@@ -158,6 +158,22 @@ export class RuleService {
   }
 
   /**
+   * Handle taking punishment cards WITHOUT advancing turn
+   * Used when player takes punishment but gets a chance to play
+   */
+  static takePunishmentCardsNoAdvance(
+    gameState: GameState,
+    playerId: string
+  ): { updatedState: GameState; events: GameEvent[] } {
+    const newState = GameStateManager.cloneState(gameState);
+    const result = PunishmentChainManager.takePunishment(newState, playerId);
+    
+    // Do NOT advance turn - player gets to play or draw again
+
+    return result;
+  }
+
+  /**
    * Draw a single card (when player has no playable card)
    */
   static drawSingleCard(
@@ -196,6 +212,49 @@ export class RuleService {
 
     // Advance turn after drawing
     GameStateManager.advanceTurn(newState);
+
+    return { updatedState: newState, events };
+  }
+
+  /**
+   * Draw a single card WITHOUT advancing turn
+   * Used for first draw when player has no playable card
+   */
+  static drawSingleCardNoAdvance(
+    gameState: GameState,
+    playerId: string
+  ): { updatedState: GameState; events: GameEvent[] } {
+    const newState = GameStateManager.cloneState(gameState);
+    const events: GameEvent[] = [];
+    
+    const player = newState.players.find(p => p.id === playerId);
+    
+    if (!player) {
+      throw new Error('Player not found');
+    }
+
+    // Draw one card from deck
+    if (newState.deck.length === 0) {
+      // Reshuffle pile into deck (keep top card)
+      if (newState.pile.length > 1) {
+        const topCard = newState.pile.pop()!;
+        newState.deck = this.shuffleDeck([...newState.pile]);
+        newState.pile = [topCard];
+      }
+    }
+
+    if (newState.deck.length > 0) {
+      const drawnCard = newState.deck.pop()!;
+      player.cards.push(drawnCard);
+
+      events.push({
+        type: 'cards_drawn',
+        playerId: playerId,
+        amount: 1,
+      });
+    }
+
+    // Do NOT advance turn - player can try again or draw again
 
     return { updatedState: newState, events };
   }

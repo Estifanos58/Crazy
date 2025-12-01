@@ -15,6 +15,11 @@ export class PunishmentHandler {
           return;
         }
 
+        // Initialize drawCount if not set
+        if (room.drawCount === undefined) {
+          room.drawCount = 0;
+        }
+
         const gameState: GameState = {
           roomId: room.roomId,
           players: room.players,
@@ -31,18 +36,35 @@ export class PunishmentHandler {
 
         let events;
         let updatedState;
+        let shouldAdvanceTurn = false;
 
         // Check if there's an active punishment chain
         if (gameState.punishmentChain.active && gameState.punishmentChain.amount > 0) {
-          // Take punishment cards
-          const result = RuleService.takePunishmentCards(gameState, socket.id);
+          // Take punishment cards - this counts as first draw
+          const result = RuleService.takePunishmentCardsNoAdvance(gameState, socket.id);
           updatedState = result.updatedState;
           events = result.events;
+          room.drawCount = 1; // After taking punishment, they've drawn once
+          console.log(`📥 ${socket.id} took ${gameState.punishmentChain.amount} punishment cards in room ${data.roomId}`);
         } else {
-          // Draw a single card when no playable card
-          const result = RuleService.drawSingleCard(gameState, socket.id);
-          updatedState = result.updatedState;
-          events = result.events;
+          // Draw a single card
+          room.drawCount++;
+          
+          if (room.drawCount >= 2) {
+            // Second draw - advance turn after drawing
+            const result = RuleService.drawSingleCard(gameState, socket.id);
+            updatedState = result.updatedState;
+            events = result.events;
+            shouldAdvanceTurn = true;
+            room.drawCount = 0; // Reset for next player
+            console.log(`🎴 ${socket.id} drew 1 card (2nd draw) - turn advances in room ${data.roomId}`);
+          } else {
+            // First draw - don't advance turn
+            const result = RuleService.drawSingleCardNoAdvance(gameState, socket.id);
+            updatedState = result.updatedState;
+            events = result.events;
+            console.log(`🎴 ${socket.id} drew 1 card (1st draw) - turn stays in room ${data.roomId}`);
+          }
         }
 
         room.players = updatedState.players;
@@ -69,16 +91,11 @@ export class PunishmentHandler {
             currentSuit: room.currentSuit,
             yourCards: player.cards,
             punishmentChain: room.punishmentChain,
+            drawCount: room.drawCount, // Send draw count to frontend
           });
         });
 
-        callback({ success: true });
-        
-        if (gameState.punishmentChain.active) {
-          console.log(`📥 ${socket.id} took ${gameState.punishmentChain.amount} punishment cards in room ${data.roomId}`);
-        } else {
-          console.log(`🎴 ${socket.id} drew 1 card in room ${data.roomId}`);
-        }
+        callback({ success: true, drawCount: room.drawCount });
       } catch (error) {
         console.error('Error taking punishment/drawing card:', error);
         callback({ success: false, error: (error as Error).message });

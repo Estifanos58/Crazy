@@ -62,6 +62,7 @@ export class PlayCardHandler {
         room.currentSuit = updatedState.currentSuit;
         room.turnDirection = updatedState.turnDirection;
         room.punishmentChain = updatedState.punishmentChain;
+        room.drawCount = 0; // Reset draw count when a card is played
 
         await RoomService.saveRoom(room);
 
