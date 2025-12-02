@@ -14,6 +14,8 @@ export interface Player {
   avatar: string;
   cards: Card[];
   isCreator: boolean;
+  rank?: number; // Position when finished (1st, 2nd, 3rd, etc.)
+  finishedAt?: number; // Timestamp when finished
 }
 
 export interface GameRules {
@@ -126,7 +128,8 @@ export type GameEvent =
   | { type: 'turn-reversed'; payload: {} }
   | { type: 'player-skipped'; payload: { playerId: string } }
   | { type: 'suit-changed'; payload: { suit: Suit } }
-  | { type: 'crazy-called'; payload: { success: boolean; callerId: string; targetId: string; penalty: number } };
+  | { type: 'crazy-called'; payload: { success: boolean; callerId: string; targetId: string; penalty: number } }
+  | { type: 'player-finished'; payload: { playerId: string; playerName: string; rank: number } };
 
 /**
  * Rule validation result
@@ -152,7 +155,8 @@ export interface PlayCardAction {
 export interface GameRoom {
   roomId: string;
   creatorId: string;
-  players: Player[];
+  players: Player[]; // Active players still in the game
+  finishedPlayers?: Player[]; // Players who have finished (ran out of cards)
   gameStarted: boolean;
   rules?: GameRules;
   ruleConfig?: RuleConfig; // New: configurable rules

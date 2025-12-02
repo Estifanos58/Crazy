@@ -38,7 +38,14 @@ export class ReconnectionHandler {
           return;
         }
 
-        const player = room.players.find(p => p.id === socket.id);
+        // Check if player is in active players or finished players
+        let player = room.players.find(p => p.id === socket.id);
+        let isFinished = false;
+        
+        if (!player && room.finishedPlayers) {
+          player = room.finishedPlayers.find(p => p.id === socket.id);
+          isFinished = true;
+        }
         
         if (!player) {
           callback({ success: false, error: 'Player not in room' });
@@ -54,13 +61,19 @@ export class ReconnectionHandler {
               avatar: p.avatar,
               cardCount: p.cards.length,
             })),
+            finishedPlayers: (room.finishedPlayers || []).map(p => ({
+              id: p.id,
+              username: p.username,
+              avatar: p.avatar,
+              rank: p.rank,
+            })),
             currentTurn: room.currentTurn,
             topCard: room.pile?.[room.pile.length - 1],
             currentSuit: room.currentSuit,
             yourCards: player.cards,
             punishmentChain: room.punishmentChain,
             turnDirection: room.turnDirection || 'clockwise',
-            gameOver: false, // Check if any player has won based on card count
+            gameOver: room.players.length <= 1,
             pileCount: room.pile?.length || 0,
             deckCount: room.deck?.length || 0,
           },

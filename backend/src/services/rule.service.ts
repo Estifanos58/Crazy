@@ -130,14 +130,24 @@ export class RuleService {
       isSkip = effectsResult.isSkip;
     }
 
-    // Check win condition
-    if (config.winOnEmpty && player.cards.length === 0) {
+    // Check if player finished (ran out of cards)
+    const playerFinished = config.winOnEmpty && player.cards.length === 0;
+    
+    if (playerFinished) {
+      // Player has finished - they're out of the game but game continues
       events.push({
         type: 'win',
         playerId,
         playerName: player.username,
       });
-      newState.gameEnded = true;
+      
+      // Note: Player will be moved to finishedPlayers by the handler
+      // Check if only one player remains
+      const activePlayers = newState.players.filter(p => p.cards.length > 0);
+      if (activePlayers.length <= 1) {
+        // Game ends when only one or zero players remain
+        newState.gameEnded = true;
+      }
     }
 
     // Handle turn advancement based on special effects
@@ -153,6 +163,11 @@ export class RuleService {
       } else {
         // Normal turn advancement
         GameStateManager.advanceTurn(newState);
+      }
+      
+      // If current player has finished, advance to next active player
+      if (playerFinished) {
+        newState.currentTurn = GameStateManager.getNextActivePlayer(newState);
       }
     }
 

@@ -69,22 +69,24 @@ export const setupGameStateEvents = (socket: Socket, set: SetState, get: GetStat
     saveStateToStorage(newState);
   });
 
-  socket.on('game-update', (data: GameState) => {
+  socket.on('game-update', (data: GameState & { finishedPlayers?: any[] }) => {
     console.log('🔄 Game state updated:', data);
-    const newActive = data.players.filter(p => 
-      p.cardCount > 0 && !get().finishedPlayers.some(fp => fp.id === p.id)
-    );
     
-    const updatedState = {
+    const updatedState: any = {
       yourCards: data.yourCards,
       currentTurn: data.currentTurn,
       currentSuit: data.currentSuit || null,
       topCard: data.topCard || null,
       punishmentChain: data.punishmentChain || null,
       players: data.players,
-      activePlayers: newActive,
+      activePlayers: data.players,
       drawCount: (data as any).drawCount || 0,
     };
+    
+    // Update finished players if provided by server
+    if (data.finishedPlayers) {
+      updatedState.finishedPlayers = data.finishedPlayers;
+    }
     
     set(updatedState);
     saveStateToStorage(get());
@@ -167,6 +169,10 @@ export const setupGameEventHandlers = (socket: Socket, set: SetState, get: GetSt
       
       case 'win':
         handleWin(event, set, get, toast);
+        break;
+      
+      case 'player-finished':
+        handlePlayerFinished(event, set, get, getPlayerName, toast);
         break;
       
       default:
@@ -303,5 +309,33 @@ const handleWin = (event: any, set: SetState, get: GetState, toast: any) => {
     });
     
     console.log(`🏆 ${winnerName} finished in position ${rank}! Game Over: ${newActive.length <= 1}`);
+  }
+};
+
+const handlePlayerFinished = (event: any, set: SetState, get: GetState, getPlayerName: (id: string) => string, toast: any) => {
+  const { playerId, playerName, rank } = event.payload;
+  const players = get().players;
+  const finishedPlayer = players.find(p => p.id === playerId);
+  
+  if (finishedPlayer) {
+    const rankSuffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';
+    const rankText = rank === 1 ? '🏆 Winner!' : `${rank}${rankSuffix} Place!`;
+    
+    toast.success(`${finishedPlayer.avatar} ${playerName} finished - ${rankText}`, {
+      duration: 5000,
+      className: 'bg-gradient-to-r from-yellow-500/20 to-cyber-primary/20 border-2 border-yellow-500',
+    });
+
+    const currentFinished = get().finishedPlayers;
+    const newFinished = [...currentFinished, { ...finishedPlayer, rank, finishedAt: Date.now() }];
+    const newActive = get().activePlayers.filter(p => p.id !== playerId);
+    
+    set({ 
+      finishedPlayers: newFinished,
+      activePlayers: newActive,
+      gameOver: newActive.length <= 1
+    });
+    
+    console.log(`🏁 ${playerName} finished in position ${rank}! Remaining players: ${newActive.length}`);
   }
 };

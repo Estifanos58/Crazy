@@ -67,4 +67,35 @@ export class GameStateManager {
     // Advance again to land on the player after skipped one
     state.currentTurn = this.getNextPlayer(state);
   }
+
+  /**
+   * Get next active player (skip players who have finished/have no cards)
+   */
+  static getNextActivePlayer(state: GameState): string {
+    const currentIndex = state.players.findIndex(p => p.id === state.currentTurn);
+    if (currentIndex === -1) {
+      // Find first active player
+      const activePlayer = state.players.find(p => p.cards.length > 0);
+      return activePlayer ? activePlayer.id : state.players[0].id;
+    }
+
+    const direction = state.turnDirection === 'clockwise' ? 1 : -1;
+    let nextIndex = currentIndex;
+    let attempts = 0;
+    const maxAttempts = state.players.length;
+
+    // Keep advancing until we find an active player
+    do {
+      nextIndex = (nextIndex + direction + state.players.length) % state.players.length;
+      attempts++;
+      
+      // If we've checked all players, return current or any player
+      if (attempts >= maxAttempts) {
+        const activePlayer = state.players.find(p => p.cards.length > 0);
+        return activePlayer ? activePlayer.id : state.players[nextIndex].id;
+      }
+    } while (state.players[nextIndex].cards.length === 0);
+    
+    return state.players[nextIndex].id;
+  }
 }

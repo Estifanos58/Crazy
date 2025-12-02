@@ -54,8 +54,39 @@ export class PlayCardHandler {
           });
         }
 
-        // Update room with new state
-        room.players = updatedState.players;
+        // Check if any player finished (ran out of cards)
+        const finishedPlayer = updatedState.players.find(p => p.cards.length === 0);
+        
+        if (finishedPlayer && !room.finishedPlayers) {
+          room.finishedPlayers = [];
+        }
+
+        if (finishedPlayer) {
+          // Calculate rank (1st, 2nd, 3rd, etc.)
+          const rank = (room.finishedPlayers?.length || 0) + 1;
+          finishedPlayer.rank = rank;
+          finishedPlayer.finishedAt = Date.now();
+          
+          // Move player from active players to finished players
+          room.players = updatedState.players.filter(p => p.id !== finishedPlayer.id);
+          room.finishedPlayers!.push(finishedPlayer);
+          
+          // Emit player-finished event
+          events.push({
+            type: 'player-finished',
+            payload: {
+              playerId: finishedPlayer.id,
+              playerName: finishedPlayer.username,
+              rank: rank,
+            },
+          });
+          
+          console.log(`🏁 ${finishedPlayer.username} finished in position ${rank}`);
+        } else {
+          // Update room with new state (no finished players)
+          room.players = updatedState.players;
+        }
+
         room.deck = updatedState.deck;
         room.pile = updatedState.pile;
         room.currentTurn = updatedState.currentTurn;
@@ -71,14 +102,21 @@ export class PlayCardHandler {
           io.to(room.roomId).emit('game-event', event);
         });
 
-        // Notify all players of game state update
-        room.players.forEach(player => {
+        // Notify all players (both active and finished) of game state update
+        const allPlayers = [...room.players, ...(room.finishedPlayers || [])];
+        allPlayers.forEach(player => {
           io.to(player.id).emit('game-update', {
             players: room.players.map(p => ({
               id: p.id,
               username: p.username,
               avatar: p.avatar,
               cardCount: p.cards.length,
+            })),
+            finishedPlayers: (room.finishedPlayers || []).map(p => ({
+              id: p.id,
+              username: p.username,
+              avatar: p.avatar,
+              rank: p.rank,
             })),
             currentTurn: room.currentTurn,
             topCard: room.pile && room.pile.length > 0 ? room.pile[room.pile.length - 1] : undefined,
