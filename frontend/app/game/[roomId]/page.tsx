@@ -21,6 +21,7 @@ export default function GamePage() {
 
   const {
     socket,
+    isConnected,
     gameStarted,
     yourCards,
     players,
@@ -50,12 +51,25 @@ export default function GamePage() {
   const [showSuitModal, setShowSuitModal] = useState(false);
   const [pendingCards, setPendingCards] = useState<Card[]>([]);
   const [showAbortModal, setShowAbortModal] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   useEffect(() => {
+    // Don't redirect immediately - wait for reconnection
     if (!socket) {
-      router.push('/');
+      // Check if there's saved state indicating we should be in a game
+      const savedState = sessionStorage.getItem('crazy-game-state');
+      if (!savedState) {
+        // No saved state, redirect to home
+        router.push('/');
+      } else {
+        // Show reconnecting state
+        setIsReconnecting(true);
+      }
+      // If there is saved state, the ConnectionManager will handle reconnection
+    } else if (isConnected) {
+      setIsReconnecting(false);
     }
-  }, [socket, router]);
+  }, [socket, isConnected, router]);
 
   const isYourTurn = socket?.id === currentTurn;
 
@@ -199,6 +213,17 @@ export default function GamePage() {
   return (
     <main className="min-h-screen relative overflow-hidden flex flex-col p-4 md:p-8">
       <Background />
+      
+      {/* Reconnecting Overlay */}
+      {isReconnecting && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="glass-panel p-8 text-center space-y-4">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-cyber-primary mx-auto"></div>
+            <h2 className="text-2xl font-bold text-white">Reconnecting...</h2>
+            <p className="text-gray-400">Restoring your game session</p>
+          </div>
+        </div>
+      )}
       
       <div className="relative z-10 max-w-7xl mx-auto w-full space-y-6">
         {/* Header */}

@@ -45,8 +45,12 @@ const setupConnectionEvents = (socket: Socket, set: SetState, get: GetState) => 
     console.log('✅ Connected to server');
     set({ socket, isConnected: true });
     
-    // Restore state after reconnection
-    restoreSession(socket, set, get);
+    // Restore state after connection (both initial and reconnection)
+    const savedState = restoreStateFromStorage();
+    if (savedState && savedState.roomId) {
+      console.log('🔄 Saved state found, attempting to restore session...');
+      restoreSession(socket, set, get);
+    }
   });
 
   socket.on('disconnect', (reason) => {
@@ -122,9 +126,21 @@ const restoreSession = (socket: Socket, set: SetState, get: GetState) => {
         gameStarted: response.room.gameStarted || false,
       });
       
-      // If game was started, request game state
+      // If game was started, request game state and redirect
       if (response.room.gameStarted) {
         requestGameState(socket, roomId, set, get);
+        
+        // Redirect to game page if not already there
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/game/')) {
+          console.log('🎮 Redirecting to game page...');
+          window.location.href = `/game/${roomId}`;
+        }
+      } else {
+        // Redirect to room page if in lobby
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/room/')) {
+          console.log('🚪 Redirecting to room page...');
+          window.location.href = `/room/${roomId}`;
+        }
       }
     } else {
       console.log('⚠️ Could not restore session:', response.error);

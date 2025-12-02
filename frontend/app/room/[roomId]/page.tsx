@@ -38,7 +38,13 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (!socket) {
-      connect();
+      // Check if there's saved state indicating we should be in this room
+      const savedState = sessionStorage.getItem('crazy-game-state');
+      if (!savedState) {
+        // No saved state, initialize connection
+        connect();
+      }
+      // If there is saved state, the ConnectionManager will handle reconnection
     }
   }, [socket, connect]);
 
