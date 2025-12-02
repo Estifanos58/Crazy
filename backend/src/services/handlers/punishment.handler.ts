@@ -34,6 +34,7 @@ export class PunishmentChainManager {
 
   /**
    * Handle A♠ played
+   * Per rules: A♠ starts a new punishment chain or adds to existing one
    */
   private static handleAceSpade(
     chain: GameState['punishmentChain'],
@@ -42,11 +43,11 @@ export class PunishmentChainManager {
     card: Card
   ) {
     if (chain.active) {
-      // A♠ resets punishment and starts new one
-      chain.amount = config.punishment.aceSpadePenalty;
-      chain.cards = [card];
+      // A♠ adds to existing punishment chain
+      chain.amount += config.punishment.aceSpadePenalty;
+      chain.cards.push(card);
       events.push({
-        type: 'punishment-chain-started',
+        type: 'punishment-chain-increased',
         payload: { amount: chain.amount },
       });
     } else {

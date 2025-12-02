@@ -24,6 +24,7 @@ export class RuleService {
         reverseCards: [{ rank: '5' }],
         skipCards: [{ rank: '7' }],
         suitChangeCards: [{ rank: 'J' }, { rank: '8' }],
+        dropCards: { rank: '7'}
       },
       crazyChallenge: {
         enabled: true,
@@ -111,6 +112,10 @@ export class RuleService {
     newState.punishmentChain = punishmentResult.chain;
     events.push(...punishmentResult.events);
 
+    // Track special effects for turn handling
+    let isReverse = false;
+    let isSkip = false;
+
     // Apply special card effects (if not in punishment chain)
     if (!newState.punishmentChain.active) {
       const effectsResult = SpecialEffectsHandler.applyEffects(
@@ -121,6 +126,8 @@ export class RuleService {
       );
       events.push(...effectsResult.events);
       Object.assign(newState, effectsResult.stateChanges);
+      isReverse = effectsResult.isReverse;
+      isSkip = effectsResult.isSkip;
     }
 
     // Check win condition
@@ -133,9 +140,20 @@ export class RuleService {
       newState.gameEnded = true;
     }
 
-    // Advance turn (unless skipped or game ended)
-    if (!newState.gameEnded && !events.some(e => e.type === 'skip')) {
-      GameStateManager.advanceTurn(newState);
+    // Handle turn advancement based on special effects
+    if (!newState.gameEnded) {
+      if (isReverse) {
+        // Per rules: when reverse card (5) is played, the previous player continues
+        // The direction has already been changed in stateChanges
+        // Now set turn to the previous player (in the NEW direction)
+        newState.currentTurn = GameStateManager.getPreviousPlayer(newState);
+      } else if (isSkip) {
+        // Skip card (7): skip the next player, land on the player after
+        GameStateManager.skipAndAdvanceTurn(newState);
+      } else {
+        // Normal turn advancement
+        GameStateManager.advanceTurn(newState);
+      }
     }
 
     return { updatedState: newState, events };

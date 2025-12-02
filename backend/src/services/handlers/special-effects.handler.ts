@@ -6,21 +6,25 @@ import type { GameState, RuleConfig, Card, GameEvent, Suit } from '../../types/g
 export class SpecialEffectsHandler {
   /**
    * Apply special card effects (reverse, skip, suit change)
+   * Returns flags indicating which special effects were triggered
    */
   static applyEffects(
     state: GameState,
     card: Card,
     config: RuleConfig,
     chosenSuit?: Suit
-  ): { events: GameEvent[]; stateChanges: Partial<GameState> } {
+  ): { events: GameEvent[]; stateChanges: Partial<GameState>; isReverse: boolean; isSkip: boolean } {
     const events: GameEvent[] = [];
     const stateChanges: Partial<GameState> = {};
+    let isReverse = false;
+    let isSkip = false;
 
     // Check and apply reverse
     const reverseEffect = this.checkReverse(card, state, config);
     if (reverseEffect) {
       events.push(reverseEffect.event);
       Object.assign(stateChanges, reverseEffect.stateChanges);
+      isReverse = true;
     }
 
     // Check and apply skip
@@ -28,6 +32,7 @@ export class SpecialEffectsHandler {
     if (skipEffect) {
       events.push(skipEffect.event);
       Object.assign(stateChanges, skipEffect.stateChanges);
+      isSkip = true;
     }
 
     // Check and apply suit change
@@ -37,7 +42,7 @@ export class SpecialEffectsHandler {
       Object.assign(stateChanges, suitChangeEffect.stateChanges);
     }
 
-    return { events, stateChanges };
+    return { events, stateChanges, isReverse, isSkip };
   }
 
   /**

@@ -56,7 +56,7 @@ export class MoveValidator {
 
     // Validate multiple cards
     if (cards.length > 1) {
-      return this.validateMultipleCards(cards, config);
+      return this.validateMultipleCards(cards, config, gameState);
     }
 
     // Validate single card
@@ -104,10 +104,15 @@ export class MoveValidator {
 
   /**
    * Validate multiple cards play
+   * Per rules: 
+   * 1) All cards must have same suit (no different suits within thrown cards)
+   * 2) The suit must match the current playing suit
+   * 3) Must have a drop/skip card (7) present to drop multiple cards
    */
   private static validateMultipleCards(
     cards: Card[],
-    config: RuleConfig
+    config: RuleConfig,
+    gameState: GameState
   ): { valid: boolean; errors: string[]; canChallengeCrazy: boolean } {
     if (!config.allowDropAllSameSuit) {
       return {
@@ -133,29 +138,37 @@ export class MoveValidator {
       };
     }
 
-    // Must have a skip card (7)
-    const hasSkipCard = cards.some(c => 
-      config.specialCards.skipCards.some(skip => 
-        (!skip.suit || skip.suit === c.suit) && skip.rank === c.rank
-      )
+    // Must have a drop card (7) per rules
+    const hasDropCard = cards.some(c => 
+      c.rank === config.specialCards.dropCards.rank && 
+      (!config.specialCards.dropCards.suit || config.specialCards.dropCards.suit === c.suit)
     );
 
-    if (!hasSkipCard) {
+    if (!hasDropCard) {
       return {
         valid: false,
-        errors: ['Multiple cards require a skip card (7)'],
-        canChallengeCrazy: false,
+        errors: ['Multiple cards require a drop card (7)'],
+        canChallengeCrazy: config.crazyChallenge.enabled,
       };
     }
 
-    // All must be same suit
+    // All must be same suit (no different suits within thrown cards list)
     const firstSuit = cards[0].suit;
     const allSameSuit = cards.every(c => c.suit === firstSuit);
     
     if (!allSameSuit) {
       return {
         valid: false,
-        errors: ['All cards must be same suit'],
+        errors: ['All cards must be same suit - blunder!'],
+        canChallengeCrazy: config.crazyChallenge.enabled,
+      };
+    }
+
+    // Per rules: The suits of the thrown cards must match the current playing suit
+    if (gameState.pile.length > 0 && firstSuit !== gameState.currentSuit) {
+      return {
+        valid: false,
+        errors: [`Cards must match current suit (${gameState.currentSuit}) - blunder!`],
         canChallengeCrazy: config.crazyChallenge.enabled,
       };
     }

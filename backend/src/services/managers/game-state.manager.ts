@@ -37,6 +37,21 @@ export class GameStateManager {
   }
 
   /**
+   * Get previous player in turn order (used for reverse card effect)
+   * Per rules: when reverse is played, the previous player continues
+   */
+  static getPreviousPlayer(state: GameState): string {
+    const currentIndex = state.players.findIndex(p => p.id === state.currentTurn);
+    if (currentIndex === -1) return state.players[0].id;
+
+    // Previous player is opposite of current direction
+    const direction = state.turnDirection === 'clockwise' ? -1 : 1;
+    const prevIndex = (currentIndex + direction + state.players.length) % state.players.length;
+    
+    return state.players[prevIndex].id;
+  }
+
+  /**
    * Advance to next player's turn
    */
   static advanceTurn(state: GameState): void {

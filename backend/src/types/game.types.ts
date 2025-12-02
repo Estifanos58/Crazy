@@ -49,6 +49,7 @@ export interface SpecialCardsConfig {
   reverseCards: CardSelector[]; // Default: any 5
   skipCards: CardSelector[]; // Default: any 7
   suitChangeCards: CardSelector[]; // Default: J or 8
+  dropCards: CardSelector; // Default: 7
 }
 
 /**
