@@ -326,10 +326,10 @@ export default function GamePage() {
             <div className="glass-panel p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <span className="text-cyber-primary">///</span> 
-                  YOUR HAND <span className="text-gray-500 text-sm font-mono">({yourCards.length})</span>
+                  <span className="text-cyber-primary">///</span>
+                  <span className="hidden sm:inline">YOUR HAND</span> <span className="text-gray-500 text-sm font-mono">({yourCards.length})</span>
                   {selectedCards.length > 0 && (
-                    <span className="text-cyber-accent text-sm font-mono animate-pulse">
+                    <span className="hidden sm:inline text-cyber-accent text-sm font-mono animate-pulse">
                       [{selectedCards.length} SELECTED]
                     </span>
                   )}
