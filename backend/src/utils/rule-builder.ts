@@ -79,6 +79,7 @@ export class RuleBuilder {
         reverseCards: [],
         skipCards: [],
         suitChangeCards: [],
+        dropCards: { rank: '7' },
       };
     }
     const selector: CardSelector = { rank, suit };
@@ -95,6 +96,7 @@ export class RuleBuilder {
         reverseCards: [],
         skipCards: [],
         suitChangeCards: [],
+        dropCards: { rank: '7' },
       };
     }
     this.config.specialCards.reverseCards = [
@@ -113,6 +115,7 @@ export class RuleBuilder {
         reverseCards: [],
         skipCards: [],
         suitChangeCards: [],
+        dropCards: { rank: '7' },
       };
     }
     const selector: CardSelector = { rank, suit };
@@ -129,6 +132,7 @@ export class RuleBuilder {
         reverseCards: [],
         skipCards: [],
         suitChangeCards: [],
+        dropCards: { rank: '7' },
       };
     }
     this.config.specialCards.skipCards = [
@@ -147,6 +151,7 @@ export class RuleBuilder {
         reverseCards: [],
         skipCards: [],
         suitChangeCards: [],
+        dropCards: { rank: '7' },
       };
     }
     this.config.specialCards.suitChangeCards = cards;
@@ -162,6 +167,7 @@ export class RuleBuilder {
         reverseCards: [],
         skipCards: [],
         suitChangeCards: [],
+        dropCards: { rank: '7' },
       };
     }
     const selector: CardSelector = { rank, suit };
