@@ -6,7 +6,7 @@ export default function HolographicCard() {
   const shouldReduceMotion = useReducedMotion();
 
   return (
-    <div className="relative w-64 h-96 perspective-1000">
+    <div className="relative w-48 h-72 sm:w-64 sm:h-96 perspective-1000">
       <motion.div
         className="w-full h-full relative preserve-3d will-change-transform"
         animate={shouldReduceMotion ? {} : {

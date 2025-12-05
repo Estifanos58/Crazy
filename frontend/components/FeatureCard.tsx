@@ -16,7 +16,7 @@ export default function FeatureCard({ icon, title, description, delay = 0 }: Fea
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay }}
-      className="glass-panel p-8 hover:border-cyber-primary/50 transition-colors duration-300 group"
+      className="glass-panel p-6 sm:p-8 hover:border-cyber-primary/50 transition-colors duration-300 group"
     >
       <div className="mb-6 text-cyber-primary group-hover:text-cyber-accent transition-colors duration-300 transform group-hover:scale-110">
         {icon}

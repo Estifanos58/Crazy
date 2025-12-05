@@ -64,7 +64,7 @@ export default function UserInfoModal({ onSubmit, isJoining = false }: UserInfoM
           <label className="block text-sm font-medium text-cyber-primary mb-3">
             SELECT AVATAR
           </label>
-          <div className="grid grid-cols-6 gap-3">
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 sm:gap-3">
             {AVATARS.map((avatar) => (
               <button
                 key={avatar.id}
