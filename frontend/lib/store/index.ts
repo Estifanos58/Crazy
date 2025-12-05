@@ -48,7 +48,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   
   takePunishment: () => actions.takePunishment(get),
   
-  callCrazy: (targetPlayerId: string) => actions.callCrazy(get, set, targetPlayerId),
+  callCrazy: () => actions.callCrazy(get, set),
   
   revertBlunder: () => actions.revertBlunder(get, set),
 

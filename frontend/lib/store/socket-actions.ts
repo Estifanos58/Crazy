@@ -138,7 +138,7 @@ export const takePunishment = (get: GetState): Promise<{ success: boolean; error
 /**
  * Call crazy action
  */
-export const callCrazy = (get: GetState, set: SetState, targetPlayerId: string): Promise<{ success: boolean; error?: string }> => {
+export const callCrazy = (get: GetState, set: SetState): Promise<{ success: boolean; error?: string }> => {
   return new Promise((resolve) => {
     const { socket, roomId } = get();
     
@@ -147,7 +147,7 @@ export const callCrazy = (get: GetState, set: SetState, targetPlayerId: string):
       return;
     }
 
-    socket.emit('call-crazy', { roomId, targetPlayerId }, (response: any) => {
+    socket.emit('call-crazy', { roomId }, (response: any) => {
       if (response.success) {
         set({
           blunderActive: false,

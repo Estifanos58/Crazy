@@ -4,7 +4,7 @@ import type { Card } from '../../types/game.types';
 
 export class CrazyCallHandler {
   static handle(socket: Socket, io: Server): void {
-    socket.on('call-crazy', async (data: { roomId: string; targetPlayerId: string }, callback) => {
+    socket.on('call-crazy', async (data: { roomId: string }, callback) => {
       try {
         const room = await RoomService.getRoom(data.roomId);
         
@@ -19,11 +19,7 @@ export class CrazyCallHandler {
           return;
         }
 
-        // Verify the target is the player who made the blunder
-        if (room.blunderState.playerId !== data.targetPlayerId) {
-          callback({ success: false, error: 'Target player does not have an active blunder' });
-          return;
-        }
+        // Automatically use the player from blunderState - no need for frontend to provide targetPlayerId
 
         const blunderPlayer = room.players.find(p => p.id === room.blunderState!.playerId);
         

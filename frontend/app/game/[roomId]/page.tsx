@@ -143,26 +143,17 @@ export default function GamePage() {
   };
 
   const handleCallCrazy = async () => {
-    // Get the previous player (the one who just played)
-    const targetId = lastPlayerId;
+    // const confirmed = confirm('Call CRAZY on the player who made a blunder?');
     
-    if (!targetId) {
-      alert('No previous player to call crazy on');
-      return;
-    }
-    
-    const targetPlayer = players.find(p => p.id === targetId);
-    const confirmed = confirm(`Call CRAZY on ${targetPlayer?.username || 'previous player'}?`);
-    
-    if (confirmed) {
+    // if (confirmed) {
       setLoadingAction('crazy');
-      const result = await callCrazy(targetId);
+      const result = await callCrazy();
       if (!result.success) {
         alert(result.error);
       }
       setLoadingAction(null);
     }
-  };
+  // };
 
   const handleLeaveGame = () => {
     setShowAbortModal(true);

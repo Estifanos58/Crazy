@@ -47,8 +47,8 @@ export class MoveValidator {
       if (!canRespond) {
         return {
           valid: false,
-          errors: ['Must play A♠ or 2 of the same suit to respond to punishment'],
-          canChallengeCrazy: false,
+          errors: ['Must play A♠ or 2 of the same suit to respond to punishment - blunder!'],
+          canChallengeCrazy: config.crazyChallenge.enabled,
         };
       }
       return { valid: true, errors: [], canChallengeCrazy: false };

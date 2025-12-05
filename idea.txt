@@ -37,3 +37,8 @@ the logic behind blunder and crazy call is ad followes
     - if players clicked the crazy btn the the backend should see the bluneder state and if there is an active bluneder state the blunder penality should be given to the player in the bluneder state and the play should continue with the player from the blunder state and the card in the blunder state should be deleted from the played cards and should be returned to the player from the blunder card
     
     from the move.validator.ts
+
+
+
+
+    there are tow bugs or errors one when when a user calls crazy he don't have to provide a player id or clicks on a player the backend should automatically see for active blunder state and the player in that bluneder player . the second bug is if a punishment chain is active a player should only take the punishment or respond to punishment not play another card if he do a blunder has been made 

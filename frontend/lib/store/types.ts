@@ -45,7 +45,7 @@ export interface GameStore {
   startGame: (cardsPerPlayer: number, customRules?: string) => Promise<{ success: boolean; error?: string }>;
   playCard: (cards: Card[], chosenSuit?: string) => Promise<{ success: boolean; error?: string }>;
   takePunishment: () => Promise<{ success: boolean; error?: string }>;
-  callCrazy: (targetPlayerId: string) => Promise<{ success: boolean; error?: string }>;
+  callCrazy: () => Promise<{ success: boolean; error?: string }>;
   revertBlunder: () => Promise<{ success: boolean; error?: string }>;
   setGameState: (state: Partial<GameStore>) => void;
 }
