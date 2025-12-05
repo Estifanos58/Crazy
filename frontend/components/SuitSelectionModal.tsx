@@ -1,9 +1,11 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { X } from 'lucide-react';
 
 interface SuitSelectionModalProps {
   isOpen: boolean;
   onSelect: (suit: 'hearts' | 'diamonds' | 'clubs' | 'spades') => void;
+  onClose: () => void;
 }
 
 const SUITS = [
@@ -13,7 +15,7 @@ const SUITS = [
   { name: 'spades', symbol: '♠', color: 'text-blue-500', bgColor: 'bg-blue-500/20', borderColor: 'border-blue-500' },
 ] as const;
 
-export default function SuitSelectionModal({ isOpen, onSelect }: SuitSelectionModalProps) {
+export default function SuitSelectionModal({ isOpen, onSelect, onClose }: SuitSelectionModalProps) {
   if (!isOpen) return null;
 
   return (
@@ -21,8 +23,15 @@ export default function SuitSelectionModal({ isOpen, onSelect }: SuitSelectionMo
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-cyber-dark border-2 border-cyber-primary rounded-xl p-4 sm:p-8 shadow-[0_0_50px_rgba(0,243,255,0.3)] max-w-md w-full mx-4"
+        className="bg-cyber-dark border-2 border-cyber-primary rounded-xl p-4 sm:p-8 shadow-[0_0_50px_rgba(0,243,255,0.3)] max-w-md w-full mx-4 relative"
       >
+        <button
+          onClick={onClose}
+          className="absolute top-2 right-2 sm:top-4 sm:right-4 text-gray-400 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-full"
+        >
+          <X size={24} />
+        </button>
+
         <h2 className="text-xl sm:text-2xl font-bold text-white text-center mb-4 sm:mb-6 font-mono">
           <span className="text-cyber-primary">SELECT</span> SUIT
         </h2>

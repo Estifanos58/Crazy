@@ -456,6 +456,10 @@ export default function GamePage() {
       <SuitSelectionModal 
         isOpen={showSuitModal}
         onSelect={handleSuitSelect}
+        onClose={() => {
+          setShowSuitModal(false);
+          setPendingCards([]);
+        }}
       />
 
       {/* Blunder Modal - Only shown to the player who made the blunder */}
