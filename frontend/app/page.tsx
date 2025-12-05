@@ -25,10 +25,14 @@ export default function Home() {
   const { connect, setUserInfo, createRoom, joinRoom } = useGameStore();
 
   const handlePlayClick = () => {
+    // Clear any previous game session
+    sessionStorage.removeItem('crazy-game-state');
     setShowGameSelect(true);
   };
 
   const handleJoinClick = () => {
+    // Clear any previous game session
+    sessionStorage.removeItem('crazy-game-state');
     setShowJoinGameModal(true);
   };
 
