@@ -53,6 +53,7 @@ export default function GamePage() {
   const [pendingCards, setPendingCards] = useState<Card[]>([]);
   const [showAbortModal, setShowAbortModal] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
   useEffect(() => {
     // Don't redirect immediately - wait for reconnection
@@ -75,10 +76,12 @@ export default function GamePage() {
   const isYourTurn = socket?.id === currentTurn;
 
   const handleRevertBlunder = async () => {
+    setLoadingAction('revert');
     const result = await revertBlunder();
     if (!result.success) {
       alert('Failed to revert move: ' + result.error);
     }
+    setLoadingAction(null);
   };
 
   const handleCardClick = (card: Card) => {
@@ -107,16 +110,19 @@ export default function GamePage() {
       return;
     }
     
+    setLoadingAction('play');
     const result = await playCard(selectedCards);
     if (result.success) {
       setSelectedCards([]);
     } else {
       alert(result.error);
     }
+    setLoadingAction(null);
   };
 
   const handleSuitSelect = async (suit: 'hearts' | 'diamonds' | 'clubs' | 'spades') => {
     setShowSuitModal(false);
+    setLoadingAction('play');
     const result = await playCard(pendingCards, suit);
     if (result.success) {
       setSelectedCards([]);
@@ -124,13 +130,16 @@ export default function GamePage() {
     } else {
       alert(result.error);
     }
+    setLoadingAction(null);
   };
 
   const handleTakePunishment = async () => {
+    setLoadingAction('punish');
     const result = await takePunishment();
     if (!result.success) {
       alert(result.error);
     }
+    setLoadingAction(null);
   };
 
   const handleCallCrazy = async () => {
@@ -146,10 +155,12 @@ export default function GamePage() {
     const confirmed = confirm(`Call CRAZY on ${targetPlayer?.username || 'previous player'}?`);
     
     if (confirmed) {
+      setLoadingAction('crazy');
       const result = await callCrazy(targetId);
       if (!result.success) {
         alert(result.error);
       }
+      setLoadingAction(null);
     }
   };
 
@@ -171,6 +182,7 @@ export default function GamePage() {
   };
 
   const handlePlayAgain = () => {
+    setLoadingAction('playAgain');
     // Emit request to start a new game with same players
     socket?.emit('play-again', { roomId }, (response: any) => {
       if (response.success) {
@@ -180,6 +192,7 @@ export default function GamePage() {
       } else {
         alert('Failed to start new game: ' + response.error);
       }
+      setLoadingAction(null);
     });
   };
 
@@ -343,13 +356,14 @@ export default function GamePage() {
                   <div className="flex gap-1 sm:gap-2">
                     <button
                       onClick={handleTakePunishment}
+                      disabled={loadingAction !== null}
                       className={`btn-secondary px-2 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm flex items-center gap-1 sm:gap-2 ${
                         punishmentChain?.active 
                           ? 'border-cyber-warning text-cyber-warning hover:bg-cyber-warning/10' 
                           : drawCount === 1
                           ? 'border-cyber-accent text-cyber-accent hover:bg-cyber-accent/10'
                           : ''
-                      }`}
+                      } ${loadingAction !== null ? 'opacity-50 cursor-not-allowed' : ''}`}
                       title={
                         punishmentChain?.active 
                           ? `Take ${punishmentChain.amount} Punishment Cards (you stay)` 
@@ -358,7 +372,11 @@ export default function GamePage() {
                           : 'Draw 1 Card (you stay)'
                       }
                     >
-                      <Hand size={14} className="sm:w-4 sm:h-4" />
+                      {loadingAction === 'punish' ? (
+                        <div className="animate-spin h-3 w-3 sm:h-4 sm:w-4 border-2 border-current border-t-transparent rounded-full" />
+                      ) : (
+                        <Hand size={14} className="sm:w-4 sm:h-4" />
+                      )}
                       <span className="hidden sm:inline">
                         {punishmentChain?.active 
                           ? `TAKE (${punishmentChain.amount})` 
@@ -369,19 +387,28 @@ export default function GamePage() {
                     </button>
                     <button
                       onClick={handleCallCrazy}
-                      className="btn-secondary px-2 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm flex items-center gap-1 sm:gap-2 border-cyber-warning text-cyber-warning hover:bg-cyber-warning/10"
+                      disabled={loadingAction !== null}
+                      className={`btn-secondary px-2 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm flex items-center gap-1 sm:gap-2 border-cyber-warning text-cyber-warning hover:bg-cyber-warning/10 ${loadingAction !== null ? 'opacity-50 cursor-not-allowed' : ''}`}
                       title="Call Crazy"
                     >
-                      <AlertTriangle size={14} className="sm:w-4 sm:h-4" />
+                      {loadingAction === 'crazy' ? (
+                        <div className="animate-spin h-3 w-3 sm:h-4 sm:w-4 border-2 border-current border-t-transparent rounded-full" />
+                      ) : (
+                        <AlertTriangle size={14} className="sm:w-4 sm:h-4" />
+                      )}
                       <span className="hidden sm:inline">CRAZY</span>
                     </button>
                     <button
                       onClick={handlePlayCards}
-                      disabled={selectedCards.length === 0}
+                      disabled={selectedCards.length === 0 || loadingAction !== null}
                       className="btn-primary px-2 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm flex items-center gap-1 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Play Selected Cards"
                     >
-                      <Play size={14} className="sm:w-4 sm:h-4" />
+                      {loadingAction === 'play' ? (
+                        <div className="animate-spin h-3 w-3 sm:h-4 sm:w-4 border-2 border-current border-t-transparent rounded-full" />
+                      ) : (
+                        <Play size={14} className="sm:w-4 sm:h-4" />
+                      )}
                       <span className="hidden sm:inline">PLAY</span>
                     </button>
                   </div>
@@ -447,6 +474,7 @@ export default function GamePage() {
         timeLeft={blunderTimeLeft}
         onRevert={handleRevertBlunder}
         onClose={() => {}}
+        isLoading={loadingAction === 'revert'}
       />
 
       {/* Game Over Modal */}
@@ -455,6 +483,7 @@ export default function GamePage() {
         rankings={rankings}
         onPlayAgain={handlePlayAgain}
         onExit={handleExitGame}
+        isLoading={loadingAction === 'playAgain'}
       />
 
       {/* Abort Game Modal */}

@@ -41,8 +41,20 @@ export class PlayCardHandler {
           data.chosenSuit
         );
 
-        // Add blunder event if invalid move
+        // Create blunder state if invalid move
         if (isBlunder) {
+          const ruleConfig = RuleService.mergeConfig(room.ruleConfig);
+          
+          // Create blunder state
+          room.blunderState = {
+            active: true,
+            playerId: socket.id,
+            cards: data.cards,
+            penalty: ruleConfig.crazyChallenge.penalty,
+            timestamp: Date.now(),
+          };
+
+          // Add blunder event
           events.push({
             type: 'invalid-move',
             payload: {
@@ -52,6 +64,15 @@ export class PlayCardHandler {
               cards: data.cards,
             },
           });
+        } else {
+          // Clear any existing blunder state on valid move
+          room.blunderState = {
+            active: false,
+            playerId: '',
+            cards: [],
+            penalty: 0,
+            timestamp: 0,
+          };
         }
 
         // Check if any player finished (ran out of cards)

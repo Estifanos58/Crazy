@@ -152,6 +152,14 @@ export interface PlayCardAction {
 
 // ============ EXISTING TYPES ============
 
+export interface BlunderState {
+  active: boolean;
+  playerId: string; // Player who made the blunder
+  cards: Card[]; // The cards that were played as a blunder
+  penalty: number; // Penalty cards if challenged
+  timestamp: number; // When the blunder occurred
+}
+
 export interface GameRoom {
   roomId: string;
   creatorId: string;
@@ -167,6 +175,7 @@ export interface GameRoom {
   pile?: Card[];
   punishmentChain?: PunishmentChain;
   drawCount?: number; // Track how many times current player has drawn (0, 1, or 2)
+  blunderState?: BlunderState; // Track active blunder for crazy call
   createdAt: number;
 }
 

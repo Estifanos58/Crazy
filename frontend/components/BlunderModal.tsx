@@ -10,6 +10,7 @@ interface BlunderModalProps {
   timeLeft: number;
   onRevert: () => void;
   onClose: () => void;
+  isLoading?: boolean;
 }
 
 export default function BlunderModal({
@@ -18,6 +19,7 @@ export default function BlunderModal({
   timeLeft,
   onRevert,
   onClose,
+  isLoading = false,
 }: BlunderModalProps) {
   const [countdown, setCountdown] = useState(timeLeft);
   const shouldReduceMotion = useReducedMotion();
@@ -121,15 +123,19 @@ export default function BlunderModal({
             {/* Revert Button */}
             <button
               onClick={onRevert}
-              disabled={countdown === 0}
+              disabled={countdown === 0 || isLoading}
               className={`w-full py-3 rounded-lg font-bold text-white transition-all duration-200 flex items-center justify-center gap-2 ${
-                countdown === 0
+                countdown === 0 || isLoading
                   ? 'bg-gray-600 cursor-not-allowed opacity-50'
                   : 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 hover:scale-105 active:scale-95 shadow-lg hover:shadow-yellow-500/50'
               }`}
             >
-              <Undo2 className="w-5 h-5" />
-              Revert Move
+              {isLoading ? (
+                <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
+              ) : (
+                <Undo2 className="w-5 h-5" />
+              )}
+              {isLoading ? 'Reverting...' : 'Revert Move'}
             </button>
 
             {countdown === 0 && (

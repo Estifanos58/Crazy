@@ -24,15 +24,16 @@ const AVATARS: Avatar[] = [
 interface UserInfoModalProps {
   onSubmit: (username: string, avatar: string) => void;
   isJoining?: boolean;
+  isLoading?: boolean;
 }
 
-export default function UserInfoModal({ onSubmit, isJoining = false }: UserInfoModalProps) {
+export default function UserInfoModal({ onSubmit, isJoining = false, isLoading = false }: UserInfoModalProps) {
   const [username, setUsername] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0].emoji);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username.trim()) {
+    if (username.trim() && !isLoading) {
       onSubmit(username.trim(), selectedAvatar);
     }
   };
@@ -85,10 +86,17 @@ export default function UserInfoModal({ onSubmit, isJoining = false }: UserInfoM
 
         <button
           type="submit"
-          className="w-full btn-primary"
-          disabled={!username.trim()}
+          className="w-full btn-primary flex items-center justify-center gap-2"
+          disabled={!username.trim() || isLoading}
         >
-          {isJoining ? 'JOIN GAME' : 'CREATE ROOM'}
+          {isLoading ? (
+            <>
+              <div className="animate-spin h-5 w-5 border-2 border-cyber-primary border-t-transparent rounded-full" />
+              <span>PROCESSING...</span>
+            </>
+          ) : (
+            <span>{isJoining ? 'JOIN GAME' : 'CREATE ROOM'}</span>
+          )}
         </button>
       </form>
     </div>

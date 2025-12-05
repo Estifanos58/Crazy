@@ -26,3 +26,14 @@ card with an id
 
 
 here are the error i have noticed with the game rule logic i am discribing it based on default rules one if a user throws A spades 5 punishment will begin then the next player can only add a punishment on top of this only if he throughs 2 spades if he puts any card a blunder(crazy) has been made and event must be shown to all users and the revert should any happen to the one user who made the blunder not to the whole room for others only a toast should be shown and when they click the crazy btn before the blunder maker clicks the revert btn two cards should be given to him and the game should continue, and the other error is if a user throw 7 with different suits together blunder has been made, as example if the current playing suit is spades and the last card is 7 the next player should only use 7 alone to change the suit and cannot throw other cards at the same time and chage suit this is a blunder fix this rule errors and for the cards number i refered user the general term because it is based on the default rule config
+
+
+
+the logic behind blunder and crazy call is ad followes 
+    - when a user makes a blunder 
+        a blunder state should be created for the player that makes the blunder and the blunder penality in should be added.
+    - then blunder modal should be shown to the player with a revert btn and a blunder toast to the other players 
+    - if the player clicks the a revert btn the card on the top of pile of card should be returned to him which is his last pushed card and the card will be removed from the played cards  and no punishment will be given to the player and the blunder state in the game will be deleted imediatelly.
+    - if players clicked the crazy btn the the backend should see the bluneder state and if there is an active bluneder state the blunder penality should be given to the player in the bluneder state and the play should continue with the player from the blunder state and the card in the blunder state should be deleted from the played cards and should be returned to the player from the blunder card
+    
+    from the move.validator.ts

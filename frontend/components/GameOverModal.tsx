@@ -14,6 +14,7 @@ interface GameOverModalProps {
   rankings: RankedPlayer[];
   onPlayAgain: () => void;
   onExit: () => void;
+  isLoading?: boolean;
 }
 
 const RANK_COLORS = [
@@ -115,12 +116,17 @@ export default function GameOverModal({ isOpen, rankings, onPlayAgain, onExit }:
           
           <motion.button
             onClick={onPlayAgain}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="flex-1 btn-primary py-4 text-lg flex items-center justify-center gap-3"
+            disabled={isLoading}
+            whileHover={{ scale: isLoading ? 1 : 1.05 }}
+            whileTap={{ scale: isLoading ? 1 : 0.95 }}
+            className="flex-1 btn-primary py-4 text-lg flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <RotateCcw size={24} />
-            <span>PLAY AGAIN</span>
+            {isLoading ? (
+              <div className="animate-spin h-6 w-6 border-2 border-cyber-primary border-t-transparent rounded-full" />
+            ) : (
+              <RotateCcw size={24} />
+            )}
+            <span>{isLoading ? 'STARTING...' : 'PLAY AGAIN'}</span>
           </motion.button>
         </motion.div>
       </motion.div>

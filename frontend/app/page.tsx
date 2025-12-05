@@ -20,6 +20,7 @@ export default function Home() {
   const [showJoinGameModal, setShowJoinGameModal] = useState(false);
   const [joinMode, setJoinMode] = useState<'create' | 'join'>('create');
   const [targetRoomId, setTargetRoomId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   
   const { connect, setUserInfo, createRoom, joinRoom } = useGameStore();
 
@@ -55,23 +56,31 @@ export default function Home() {
 
   const handleUserInfoSubmit = async (username: string, avatar: string) => {
     setUserInfo(username, avatar);
+    setIsLoading(true);
     
-    if (joinMode === 'create') {
-      const result = await createRoom();
-      
-      if (result.success && result.roomId) {
-        router.push(`/room/${result.roomId}`);
-      } else {
-        alert('Failed to create room: ' + result.error);
+    try {
+      if (joinMode === 'create') {
+        const result = await createRoom();
+        
+        if (result.success && result.roomId) {
+          router.push(`/room/${result.roomId}`);
+        } else {
+          alert('Failed to create room: ' + result.error);
+          setIsLoading(false);
+        }
+      } else if (joinMode === 'join' && targetRoomId) {
+        const result = await joinRoom(targetRoomId);
+        
+        if (result.success) {
+          router.push(`/room/${targetRoomId}`);
+        } else {
+          alert('Failed to join room: ' + result.error);
+          setIsLoading(false);
+        }
       }
-    } else if (joinMode === 'join' && targetRoomId) {
-      const result = await joinRoom(targetRoomId);
-      
-      if (result.success) {
-        router.push(`/room/${targetRoomId}`);
-      } else {
-        alert('Failed to join room: ' + result.error);
-      }
+    } catch (error) {
+      console.error(error);
+      setIsLoading(false);
     }
   };
 
@@ -222,6 +231,7 @@ export default function Home() {
         <UserInfoModal 
           onSubmit={handleUserInfoSubmit} 
           isJoining={joinMode === 'join'}
+          isLoading={isLoading}
         />
       </Modal>
 

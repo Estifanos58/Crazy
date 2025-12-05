@@ -20,14 +20,22 @@ export class BlunderHandler {
           return;
         }
 
-        // Check if there are cards to revert
-        if (!room.pile || room.pile.length < data.cards.length) {
-          callback({ success: false, error: 'No cards to revert' });
+        // Check if there's an active blunder state for this player
+        if (!room.blunderState || !room.blunderState.active || room.blunderState.playerId !== socket.id) {
+          callback({ success: false, error: 'No active blunder to revert' });
           return;
         }
 
-        // Pop the blundered cards from pile
-        const cardsToRevert = data.cards;
+        // Use the cards from blunder state (more reliable than client data)
+        const cardsToRevert = room.blunderState.cards;
+
+        // Check if there are cards to revert in pile
+        if (!room.pile || room.pile.length < cardsToRevert.length) {
+          callback({ success: false, error: 'No cards to revert in pile' });
+          return;
+        }
+
+        // Remove the blundered cards from pile (pop from end)
         for (let i = 0; i < cardsToRevert.length; i++) {
           room.pile.pop();
         }
@@ -40,6 +48,15 @@ export class BlunderHandler {
           const previousTopCard = room.pile[room.pile.length - 1];
           room.currentSuit = previousTopCard.suit;
         }
+
+        // Clear blunder state immediately
+        room.blunderState = {
+          active: false,
+          playerId: '',
+          cards: [],
+          penalty: 0,
+          timestamp: 0,
+        };
 
         // Player keeps their turn (no turn advance)
         await RoomService.saveRoom(room);

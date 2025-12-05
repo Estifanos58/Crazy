@@ -23,6 +23,7 @@ export default function RoomPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [copied, setCopied] = useState(false);
   const [cardsPerPlayer, setCardsPerPlayer] = useState(7);
+  const [isLoading, setIsLoading] = useState(false);
 
   const {
     socket,
@@ -63,14 +64,17 @@ export default function RoomPage() {
 
   const handleUserInfoSubmit = async (username: string, avatar: string) => {
     setUserInfo(username, avatar);
+    setIsLoading(true);
     
     const result = await joinRoom(roomId);
     
     if (result.success) {
       setShowUserInfo(false);
+      setIsLoading(false);
     } else {
       alert('Failed to join room: ' + result.error);
       router.push('/');
+      setIsLoading(false);
     }
   };
 
@@ -83,12 +87,14 @@ export default function RoomPage() {
   };
 
   const handleStartGame = async () => {
+    setIsLoading(true);
     const result = await startGame(cardsPerPlayer);
     
     if (result.success) {
       router.push(`/game/${roomId}`);
     } else {
       alert('Failed to start game: ' + result.error);
+      setIsLoading(false);
     }
   };
 
@@ -194,11 +200,15 @@ export default function RoomPage() {
 
                   <button
                     onClick={handleStartGame}
-                    disabled={players.length < 2}
+                    disabled={players.length < 2 || isLoading}
                     className="w-full btn-primary flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(0,243,255,0.2)]"
                   >
-                    <Play size={20} fill="currentColor" />
-                    START GAME
+                    {isLoading ? (
+                      <div className="animate-spin h-5 w-5 border-2 border-cyber-primary border-t-transparent rounded-full" />
+                    ) : (
+                      <Play size={20} fill="currentColor" />
+                    )}
+                    <span>{isLoading ? 'STARTING...' : 'START GAME'}</span>
                   </button>
 
                   {players.length < 2 && (
@@ -231,7 +241,7 @@ export default function RoomPage() {
         }}
         title="PLAYER IDENTIFICATION"
       >
-        <UserInfoModal onSubmit={handleUserInfoSubmit} isJoining />
+        <UserInfoModal onSubmit={handleUserInfoSubmit} isJoining isLoading={isLoading} />
       </Modal>
 
       {/* QR Code Modal */}
