@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { AlertTriangle, Undo2, Timer } from 'lucide-react';
 
 interface BlunderModalProps {
@@ -20,6 +20,7 @@ export default function BlunderModal({
   onClose,
 }: BlunderModalProps) {
   const [countdown, setCountdown] = useState(timeLeft);
+  const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -54,12 +55,13 @@ export default function BlunderModal({
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="relative w-full max-w-md bg-gradient-to-br from-red-900/40 to-gray-900/40 border-2 border-red-500/50 rounded-2xl p-6 backdrop-blur-xl shadow-2xl"
+            transition={{ duration: shouldReduceMotion ? 0 : 0.3 }}
+            className="relative w-full max-w-md bg-gradient-to-br from-red-900/40 to-gray-900/40 border-2 border-red-500/50 rounded-2xl p-6 backdrop-blur-xl shadow-2xl will-change-transform"
           >
             {/* Warning Icon */}
             <div className="flex justify-center mb-4">
               <motion.div
-                animate={{ 
+                animate={shouldReduceMotion ? {} : { 
                   rotate: [0, -10, 10, -10, 10, 0],
                   scale: [1, 1.1, 1]
                 }}
@@ -98,6 +100,7 @@ export default function BlunderModal({
                 <motion.div
                   className="absolute inset-y-0 left-0 bg-gradient-to-r from-yellow-400 to-red-500"
                   initial={{ width: '100%' }}
+
                   animate={{ width: `${progress}%` }}
                   transition={{ duration: 1, ease: 'linear' }}
                 />

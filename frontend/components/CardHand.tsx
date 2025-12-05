@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import type { Card as CardType } from '@/types/game.types';
 import CardComponent from './Card';
 
@@ -9,9 +9,9 @@ interface CardHandProps {
   disabled?: boolean;
 }
 
-export default function CardHand({ cards, selectedCards = [], onCardClick, disabled = false }: CardHandProps) {
+const CardHand = memo(function CardHand({ cards, selectedCards = [], onCardClick, disabled = false }: CardHandProps) {
   return (
-    <div className="flex flex-wrap gap-2 justify-center p-4">
+    <div className="flex flex-wrap gap-1 sm:gap-2 justify-center p-2 sm:p-4">
       {cards.map((card) => (
         <CardComponent
           key={card.id}
@@ -23,4 +23,6 @@ export default function CardHand({ cards, selectedCards = [], onCardClick, disab
       ))}
     </div>
   );
-}
+});
+
+export default CardHand;

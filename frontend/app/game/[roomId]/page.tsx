@@ -211,7 +211,7 @@ export default function GamePage() {
   ].sort((a, b) => a.rank - b.rank);
 
   return (
-    <main className="min-h-screen relative overflow-hidden flex flex-col p-4 md:p-8">
+    <main className="min-h-screen relative overflow-hidden flex flex-col p-2 sm:p-4 md:p-8">
       <Background />
       
       {/* Reconnecting Overlay */}
@@ -225,21 +225,21 @@ export default function GamePage() {
         </div>
       )}
       
-      <div className="relative z-10 max-w-7xl mx-auto w-full space-y-6">
+      <div className="relative z-10 max-w-7xl mx-auto w-full space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="glass-panel p-4 flex justify-between items-center">
+        <div className="glass-panel p-2 sm:p-4 flex justify-between items-center">
           <button
             onClick={handleLeaveGame}
-            className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors hover:bg-white/10 px-4 py-2 rounded-lg"
+            className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors hover:bg-white/10 px-2 sm:px-4 py-2 rounded-lg"
           >
             <ArrowLeft size={20} />
-            <span className="font-mono uppercase">Abort Mission</span>
+            <span className="font-mono uppercase hidden sm:inline">Abort Mission</span>
           </button>
           
           <div className="text-center">
             <div className="flex items-center gap-3 justify-center mb-1">
-              <span className="text-cyber-primary font-bold tracking-widest uppercase text-sm">Sector</span>
-              <code className="bg-cyber-black/50 border border-cyber-primary/30 px-3 py-1 rounded text-lg font-mono text-white shadow-[0_0_10px_rgba(0,243,255,0.2)]">
+              <span className="text-cyber-primary font-bold tracking-widest uppercase text-xs sm:text-sm">Sector</span>
+              <code className="bg-cyber-black/50 border border-cyber-primary/30 px-2 sm:px-3 py-1 rounded text-sm sm:text-lg font-mono text-white shadow-[0_0_10px_rgba(0,243,255,0.2)]">
                 {roomId}
               </code>
             </div>
@@ -247,30 +247,31 @@ export default function GamePage() {
               <motion.div 
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className="text-cyber-accent font-bold uppercase tracking-widest text-sm animate-pulse flex items-center justify-center gap-2"
+                className="text-cyber-accent font-bold uppercase tracking-widest text-xs sm:text-sm animate-pulse flex items-center justify-center gap-2"
               >
                 <Zap size={14} /> YOUR TURN <Zap size={14} />
               </motion.div>
             )}
           </div>
 
-          <div className="w-32 hidden md:block" />
+          <div className="w-8 sm:w-32" />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
             {/* Game Board */}
-            <div className="glass-panel p-6 relative overflow-hidden min-h-[400px] flex flex-col">
+            <div className="glass-panel p-4 sm:p-6 relative overflow-hidden min-h-[300px] sm:min-h-[400px] flex flex-col">
               <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10" />
               <div className="flex justify-between items-center mb-4 relative z-10">
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
                   <Shield className="text-cyber-secondary" size={20} />
-                  ACTIVE BATTLEFIELD
+                  <span className="hidden sm:inline">ACTIVE BATTLEFIELD</span>
+                  <span className="sm:hidden">BATTLEFIELD</span>
                 </h2>
                 {currentSuit && (
                   <div className="flex items-center gap-2 text-cyber-primary">
-                    <span className="text-sm font-mono">SUIT:</span>
-                    <span className="text-2xl">
+                    <span className="text-xs sm:text-sm font-mono">SUIT:</span>
+                    <span className="text-xl sm:text-2xl">
                       {currentSuit === 'hearts' && '♥'}
                       {currentSuit === 'diamonds' && '♦'}
                       {currentSuit === 'clubs' && '♣'}
@@ -323,11 +324,13 @@ export default function GamePage() {
             </div>
 
             {/* Player Hand */}
-            <div className="glass-panel p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <div className="glass-panel p-4 sm:p-6">
+              <div className="flex justify-between items-center mb-2 sm:mb-4">
+                <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
                   <span className="text-cyber-primary">///</span>
-                  <span className="hidden sm:inline">YOUR HAND</span> <span className="text-gray-500 text-sm font-mono">({yourCards.length})</span>
+                  <span className="hidden sm:inline">YOUR HAND</span>
+                  <span className="sm:hidden">HAND</span>
+                  <span className="text-gray-500 text-xs sm:text-sm font-mono">({yourCards.length})</span>
                   {selectedCards.length > 0 && (
                     <span className="hidden sm:inline text-cyber-accent text-sm font-mono animate-pulse">
                       [{selectedCards.length} SELECTED]
@@ -336,10 +339,10 @@ export default function GamePage() {
                 </h2>
                 
                 {isYourTurn && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-1 sm:gap-2">
                     <button
                       onClick={handleTakePunishment}
-                      className={`btn-secondary px-4 py-2 text-sm flex items-center gap-2 ${
+                      className={`btn-secondary px-2 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm flex items-center gap-1 sm:gap-2 ${
                         punishmentChain?.active 
                           ? 'border-cyber-warning text-cyber-warning hover:bg-cyber-warning/10' 
                           : drawCount === 1
@@ -354,7 +357,7 @@ export default function GamePage() {
                           : 'Draw 1 Card (you stay)'
                       }
                     >
-                      <Hand size={16} />
+                      <Hand size={14} className="sm:w-4 sm:h-4" />
                       <span className="hidden sm:inline">
                         {punishmentChain?.active 
                           ? `TAKE (${punishmentChain.amount})` 
@@ -365,19 +368,19 @@ export default function GamePage() {
                     </button>
                     <button
                       onClick={handleCallCrazy}
-                      className="btn-secondary px-4 py-2 text-sm flex items-center gap-2 border-cyber-warning text-cyber-warning hover:bg-cyber-warning/10"
+                      className="btn-secondary px-2 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm flex items-center gap-1 sm:gap-2 border-cyber-warning text-cyber-warning hover:bg-cyber-warning/10"
                       title="Call Crazy"
                     >
-                      <AlertTriangle size={16} />
+                      <AlertTriangle size={14} className="sm:w-4 sm:h-4" />
                       <span className="hidden sm:inline">CRAZY</span>
                     </button>
                     <button
                       onClick={handlePlayCards}
                       disabled={selectedCards.length === 0}
-                      className="btn-primary px-4 py-2 text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="btn-primary px-2 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm flex items-center gap-1 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Play Selected Cards"
                     >
-                      <Play size={16} />
+                      <Play size={14} className="sm:w-4 sm:h-4" />
                       <span className="hidden sm:inline">PLAY</span>
                     </button>
                   </div>
@@ -394,7 +397,7 @@ export default function GamePage() {
           </div>
 
           {/* Sidebar */}
-          <div className="glass-panel p-6 h-fit space-y-4">
+          <div className="glass-panel p-4 sm:p-6 h-fit space-y-4">
             <PlayerList 
               players={activePlayers} 
               currentUserId={socket?.id}

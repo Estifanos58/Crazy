@@ -1,10 +1,11 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 export default function Background() {
   const [mounted, setMounted] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     setMounted(true);
@@ -23,8 +24,8 @@ export default function Background() {
         }}
       />
       
-      {/* Floating Hexagons */}
-      {[...Array(6)].map((_, i) => {
+      {/* Floating Hexagons - Disabled on reduced motion, count reduced to 3 */}
+      {!shouldReduceMotion && [...Array(3)].map((_, i) => {
         const size = Math.random() * 300 + 100;
         const startX = Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1000);
         const startY = Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 1000);
@@ -35,7 +36,7 @@ export default function Background() {
         return (
           <motion.div
             key={i}
-            className="absolute border border-cyber-primary/20 rounded-full"
+            className="absolute border border-cyber-primary/20 rounded-full will-change-transform"
             initial={{
               x: startX,
               y: startY,
@@ -59,31 +60,40 @@ export default function Background() {
         );
       })}
 
-      {/* Glowing Orbs */}
-      <motion.div
-        className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyber-primary/20 rounded-full blur-[100px]"
-        animate={{
-          scale: [1, 1.2, 1],
-          opacity: [0.2, 0.3, 0.2],
-        }}
-        transition={{
-          duration: 8,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      />
-      <motion.div
-        className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyber-secondary/20 rounded-full blur-[100px]"
-        animate={{
-          scale: [1.2, 1, 1.2],
-          opacity: [0.2, 0.3, 0.2],
-        }}
-        transition={{
-          duration: 8,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      />
+      {/* Glowing Orbs - Static on reduced motion */}
+      {shouldReduceMotion ? (
+        <>
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyber-primary/10 rounded-full blur-[50px]" />
+          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyber-secondary/10 rounded-full blur-[50px]" />
+        </>
+      ) : (
+        <>
+          <motion.div
+            className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyber-primary/20 rounded-full blur-[100px] will-change-transform"
+            animate={{
+              scale: [1, 1.2, 1],
+              opacity: [0.2, 0.3, 0.2],
+            }}
+            transition={{
+              duration: 8,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+          />
+          <motion.div
+            className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyber-secondary/20 rounded-full blur-[100px] will-change-transform"
+            animate={{
+              scale: [1.2, 1, 1.2],
+              opacity: [0.2, 0.3, 0.2],
+            }}
+            transition={{
+              duration: 8,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

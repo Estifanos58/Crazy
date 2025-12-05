@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import type { Card } from '@/types/game.types';
 
 interface CardComponentProps {
@@ -22,7 +22,7 @@ const SUIT_COLORS = {
   spades: 'text-cyber-primary drop-shadow-[0_0_5px_rgba(0,243,255,0.8)]',
 };
 
-export default function CardComponent({ card, onClick, disabled = false, isSelected = false }: CardComponentProps) {
+const CardComponent = memo(function CardComponent({ card, onClick, disabled = false, isSelected = false }: CardComponentProps) {
   const suitSymbol = SUIT_SYMBOLS[card.suit];
   const suitColor = SUIT_COLORS[card.suit];
 
@@ -31,12 +31,12 @@ export default function CardComponent({ card, onClick, disabled = false, isSelec
       onClick={onClick}
       disabled={disabled}
       className={`
-        relative rounded-xl border transition-all duration-300
-        w-24 h-36 flex flex-col items-center justify-center overflow-hidden
+        relative rounded-xl border transition-transform duration-300 will-change-transform
+        w-16 h-24 sm:w-20 sm:h-32 md:w-24 md:h-36 flex flex-col items-center justify-center overflow-hidden
         ${!disabled && onClick 
           ? 'hover:scale-110 hover:shadow-[0_0_20px_rgba(0,243,255,0.4)] hover:border-cyber-primary cursor-pointer z-10' 
           : ''}
-        ${isSelected ? '-translate-y-6 shadow-[0_0_30px_rgba(0,243,255,0.6)] border-cyber-primary scale-105 z-20' : ''}
+        ${isSelected ? '-translate-y-4 sm:-translate-y-6 shadow-[0_0_30px_rgba(0,243,255,0.6)] border-cyber-primary scale-105 z-20' : ''}
         ${disabled ? 'opacity-50 cursor-not-allowed grayscale' : ''}
         bg-cyber-dark/90 backdrop-blur-md border-cyber-primary/30
       `}
@@ -49,15 +49,17 @@ export default function CardComponent({ card, onClick, disabled = false, isSelec
       <div className="absolute bottom-2 right-2 w-2 h-2 border-b border-r border-cyber-primary/50" />
 
       {/* Card Content */}
-      <div className={`text-4xl font-bold ${suitColor} mb-1 font-mono`}>
+      <div className={`text-2xl sm:text-3xl md:text-4xl font-bold ${suitColor} mb-1 font-mono`}>
         {card.rank}
       </div>
-      <div className={`text-5xl ${suitColor}`}>
+      <div className={`text-3xl sm:text-4xl md:text-5xl ${suitColor}`}>
         {suitSymbol}
       </div>
 
       {/* Scanline Effect */}
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/5 to-transparent pointer-events-none animate-pulse" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/5 to-transparent pointer-events-none motion-safe:animate-pulse" />
     </button>
   );
-}
+});
+
+export default CardComponent;

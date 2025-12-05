@@ -1,13 +1,15 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 
 export default function HolographicCard() {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <div className="relative w-64 h-96 perspective-1000">
       <motion.div
-        className="w-full h-full relative preserve-3d"
-        animate={{
+        className="w-full h-full relative preserve-3d will-change-transform"
+        animate={shouldReduceMotion ? {} : {
           rotateY: [0, 360],
           y: [0, -20, 0],
         }}
@@ -57,17 +59,21 @@ export default function HolographicCard() {
         </div>
       </motion.div>
       
-      {/* Floating Elements around card */}
-      <motion.div
-        className="absolute -top-10 -right-10 w-20 h-20 border border-cyber-secondary/30 rounded-full"
-        animate={{ rotate: -360 }}
-        transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-      />
-      <motion.div
-        className="absolute -bottom-5 -left-5 w-16 h-16 border border-cyber-primary/30 rotate-45"
-        animate={{ rotate: 360 }}
-        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-      />
+      {/* Floating Elements around card - Hidden on reduced motion */}
+      {!shouldReduceMotion && (
+        <>
+          <motion.div
+            className="absolute -top-10 -right-10 w-20 h-20 border border-cyber-secondary/30 rounded-full will-change-transform"
+            animate={{ rotate: -360 }}
+            transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
+          />
+          <motion.div
+            className="absolute -bottom-5 -left-5 w-16 h-16 border border-cyber-primary/30 rotate-45 will-change-transform"
+            animate={{ rotate: 360 }}
+            transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+          />
+        </>
+      )}
     </div>
   );
 }
