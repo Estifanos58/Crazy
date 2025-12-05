@@ -153,10 +153,9 @@ export class RuleService {
     // Handle turn advancement based on special effects
     if (!newState.gameEnded) {
       if (isReverse) {
-        // Per rules: when reverse card (5) is played, the previous player continues
-        // The direction has already been changed in stateChanges
-        // Now set turn to the previous player (in the NEW direction)
-        newState.currentTurn = GameStateManager.getPreviousPlayer(newState);
+        // Per rules: when reverse card (5) is played, turn continues with previous player
+        // The direction and currentTurn have already been set in stateChanges
+        // No additional turn advancement needed
       } else if (isSkip) {
         // Skip card (7): skip the next player, land on the player after
         GameStateManager.skipAndAdvanceTurn(newState);

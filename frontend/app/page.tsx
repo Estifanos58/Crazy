@@ -80,31 +80,30 @@ export default function Home() {
       <Background />
 
       {/* Hero Section */}
-      <section className="relative z-10 flex-grow flex flex-col lg:flex-row items-center justify-center px-4 py-32 lg:py-40 max-w-7xl mx-auto w-full gap-12 lg:gap-24">
+      <section className="relative z-10 flex-grow flex flex-col lg:flex-row items-center justify-center px-4 py-16 sm:py-24 lg:py-40 max-w-7xl mx-auto w-full gap-8 sm:gap-12 lg:gap-24">
         
         {/* Text Content */}
-        <div className="flex-1 text-center lg:text-left space-y-8">
+        <div className="flex-1 text-center lg:text-left space-y-6 sm:space-y-8">
           <motion.div
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
           >
-            <h1 className="text-6xl lg:text-8xl font-black flex gap-4 tracking-tighter mb-4">
-              <span className="text-transparent px-3 bg-clip-text bg-gradient-to-r from-cyber-primary via-white to-cyber-primary animate-pulse-glow">
+            <h1 className="text-4xl sm:text-5xl lg:text-8xl font-black flex gap-2 sm:gap-4 tracking-tighter mb-4">
+              <span className="text-transparent px-2 sm:px-3 bg-clip-text bg-gradient-to-r from-cyber-primary via-white to-cyber-primary animate-pulse-glow">
                 CRAZY
               </span>
-              {/* <br />  */}
               <span className="text-white text-glow-purple">CARDS</span>
             </h1>
-            <p className="text-xl lg:text-2xl text-gray-300 max-w-2xl mx-auto lg:mx-0 font-light tracking-wide">
+            <p className="text-lg sm:text-xl lg:text-2xl text-gray-300 max-w-xl sm:max-w-2xl mx-auto lg:mx-0 font-light tracking-wide">
               The Future of Multiplayer Card Gaming is Here.
-              <span className="block text-cyber-primary mt-2 font-mono text-sm">
+              <span className="block text-cyber-primary mt-2 font-mono text-xs sm:text-sm">
                 // SYSTEM.READY // WAITING_FOR_PLAYER
               </span>
             </p>
           </motion.div>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center lg:justify-start">
             <motion.button
               onClick={handlePlayClick}
               initial={{ opacity: 0, scale: 0.8 }}
@@ -112,7 +111,7 @@ export default function Home() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               transition={{ delay: 0.4 }}
-              className="btn-primary text-xl px-12 py-6 shadow-[0_0_30px_rgba(0,243,255,0.3)]"
+              className="btn-primary text-lg sm:text-xl px-8 sm:px-12 py-4 sm:py-6 shadow-[0_0_20px_rgba(0,243,255,0.3)]"
             >
               INITIALIZE GAME
             </motion.button>
@@ -124,7 +123,7 @@ export default function Home() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               transition={{ delay: 0.5 }}
-              className="btn-secondary text-xl px-12 py-6"
+              className="btn-secondary text-lg sm:text-xl px-8 sm:px-12 py-4 sm:py-6"
             >
               JOIN GAME
             </motion.button>
@@ -143,23 +142,23 @@ export default function Home() {
       </section>
 
       {/* Features Section */}
-      <section className="relative z-10 py-20 px-4 bg-cyber-black/50 backdrop-blur-sm border-t border-white/5">
+      <section className="relative z-10 py-12 sm:py-20 px-4 bg-cyber-black/50 backdrop-blur-sm border-t border-white/5">
         <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8">
             <FeatureCard
-              icon={<Globe size={40} />}
+              icon={<Globe size={32} sm:size={40} />}
               title="Real-Time Multiplayer"
               description="Instant connections. Zero lag. Play with friends anywhere in the world with our low-latency WebSocket infrastructure."
               delay={0.2}
             />
             <FeatureCard
-              icon={<Smartphone size={40} />}
+              icon={<Smartphone size={32} sm:size={40} />}
               title="Telegram Native"
               description="Jump straight into the action directly from your Telegram chats. Seamless integration for maximum accessibility."
               delay={0.4}
             />
             <FeatureCard
-              icon={<Zap size={40} />}
+              icon={<Zap size={32} sm:size={40} />}
               title="High-Octane Action"
               description="Fast-paced rules designed for quick, intense sessions. Experience card gaming at the speed of light."
               delay={0.6}

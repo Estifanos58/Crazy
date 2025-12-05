@@ -47,6 +47,7 @@ export class SpecialEffectsHandler {
 
   /**
    * Check and handle reverse effect
+   * Per rules: Reverse changes direction, and the previous player (in old direction) continues
    */
   private static checkReverse(
     card: Card,
@@ -60,6 +61,8 @@ export class SpecialEffectsHandler {
     if (!isReverse) return null;
 
     const newDirection = state.turnDirection === 'clockwise' ? 'counterclockwise' : 'clockwise';
+    // Get the previous player in the OLD direction (before reversing)
+    const previousPlayer = this.getPreviousPlayerInDirection(state, state.turnDirection);
 
     return {
       event: {
@@ -68,6 +71,8 @@ export class SpecialEffectsHandler {
       },
       stateChanges: {
         turnDirection: newDirection,
+        // Set turn to the previous player (who becomes the next player after reversal)
+        currentTurn: previousPlayer,
       },
     };
   }
@@ -135,5 +140,19 @@ export class SpecialEffectsHandler {
     const nextIndex = (currentIndex + direction + state.players.length) % state.players.length;
     
     return state.players[nextIndex].id;
+  }
+
+  /**
+   * Get previous player in a specific direction
+   */
+  private static getPreviousPlayerInDirection(state: GameState, direction: 'clockwise' | 'counterclockwise'): string {
+    const currentIndex = state.players.findIndex(p => p.id === state.currentTurn);
+    if (currentIndex === -1) return state.players[0].id;
+
+    // Previous is opposite of the given direction
+    const directionModifier = direction === 'clockwise' ? -1 : 1;
+    const prevIndex = (currentIndex + directionModifier + state.players.length) % state.players.length;
+    
+    return state.players[prevIndex].id;
   }
 }
