@@ -116,17 +116,14 @@ export default function GameOverModal({ isOpen, rankings, onPlayAgain, onExit }:
           
           <motion.button
             onClick={onPlayAgain}
-            disabled={isLoading}
-            whileHover={{ scale: isLoading ? 1 : 1.05 }}
-            whileTap={{ scale: isLoading ? 1 : 0.95 }}
+            whileHover={{ scale:   1  }}
+            whileTap={{ scale:  1 }}
             className="flex-1 btn-primary py-4 text-lg flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? (
+            { (
               <div className="animate-spin h-6 w-6 border-2 border-cyber-primary border-t-transparent rounded-full" />
-            ) : (
-              <RotateCcw size={24} />
-            )}
-            <span>{isLoading ? 'STARTING...' : 'PLAY AGAIN'}</span>
+            ) }
+            <span>{'PLAY AGAIN'}</span>
           </motion.button>
         </motion.div>
       </motion.div>
