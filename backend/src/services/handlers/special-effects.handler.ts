@@ -54,7 +54,7 @@ export class SpecialEffectsHandler {
     config: RuleConfig
   ): { event: GameEvent; stateChanges: Partial<GameState> } | null {
     const isReverse = config.specialCards.reverseCards.some(rc =>
-      rc.rank === card.rank && (!rc.suit || rc.suit === card.suit)
+      rc.rank === card.rank 
     );
 
     if (!isReverse) return null;
@@ -81,7 +81,7 @@ export class SpecialEffectsHandler {
     config: RuleConfig
   ): { event: GameEvent; stateChanges: Partial<GameState> } | null {
     const isSkip = config.specialCards.skipCards.some(sc =>
-      sc.rank === card.rank && (!sc.suit || sc.suit === card.suit)
+      sc.rank === card.rank 
     );
 
     if (!isSkip) return null;
@@ -108,7 +108,7 @@ export class SpecialEffectsHandler {
     chosenSuit?: Suit
   ): { event: GameEvent; stateChanges: Partial<GameState> } | null {
     const isSuitChange = config.specialCards.suitChangeCards.some(sc =>
-      sc.rank === card.rank && (!sc.suit || sc.suit === card.suit)
+      sc.rank === card.rank
     );
 
     if (!isSuitChange || !chosenSuit) return null;

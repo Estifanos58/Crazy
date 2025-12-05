@@ -74,19 +74,21 @@ export class MoveValidator {
     if (cards.length !== 1) return false;
     
     const card = cards[0];
+    const punishmentCards = gameState.punishmentChain.cards;
+    const lastPunishmentCard = punishmentCards[punishmentCards.length - 1];
 
-    // Check if it's A♠ (can respond to any punishment)
+
+
+    // // Check if it's A♠ (can respond to 2♠)
     if (card.rank === config.punishment.aceSpadeCard.rank && 
-        card.suit === config.punishment.aceSpadeCard.suit) {
+        card.suit === config.punishment.aceSpadeCard.suit && lastPunishmentCard.rank === config.punishment.rank2Cards[0] && lastPunishmentCard.suit === 'spades') {
       return true;
     }
 
     // Check if it's a 2 - must be same suit as the punishment initiator
     if (config.punishment.rank2Cards.includes(card.rank)) {
       // Get the last card in the punishment chain
-      const punishmentCards = gameState.punishmentChain.cards;
       if (punishmentCards.length > 0) {
-        const lastPunishmentCard = punishmentCards[punishmentCards.length - 1];
         // If punishment started with A♠, any 2 of spades can respond
         if (lastPunishmentCard.rank === config.punishment.aceSpadeCard.rank &&
             lastPunishmentCard.suit === config.punishment.aceSpadeCard.suit) {
@@ -122,26 +124,25 @@ export class MoveValidator {
       };
     }
 
-    // Check if any card is a suit-changing card (J or 8)
-    const hasSuitChangeCard = cards.some(c => 
-      config.specialCards.suitChangeCards.some(sc => 
-        sc.rank === c.rank && (!sc.suit || sc.suit === c.suit)
-      )
-    );
+    // // Check if any card is a suit-changing card (J or 8)
+    // const hasSuitChangeCard = cards.some(c => 
+    //   config.specialCards.suitChangeCards.some(sc => 
+    //     sc.rank === c.rank && (!sc.suit || sc.suit === c.suit)
+    //   )
+    // );
 
-    // Suit-changing cards (J, 8) CANNOT be played with other cards
-    if (hasSuitChangeCard) {
-      return {
-        valid: false,
-        errors: ['Suit-changing cards (J, 8) must be played alone'],
-        canChallengeCrazy: config.crazyChallenge.enabled,
-      };
-    }
+    // // Suit-changing cards (J, 8) CANNOT be played with other cards
+    // if (hasSuitChangeCard) {
+    //   return {
+    //     valid: false,
+    //     errors: ['Suit-changing cards (J, 8) must be played alone'],
+    //     canChallengeCrazy: config.crazyChallenge.enabled,
+    //   };
+    // }
 
     // Must have a drop card (7) per rules
     const hasDropCard = cards.some(c => 
-      c.rank === config.specialCards.dropCards.rank && 
-      (!config.specialCards.dropCards.suit || config.specialCards.dropCards.suit === c.suit)
+      c.rank === config.specialCards.dropCards.rank
     );
 
     if (!hasDropCard) {
@@ -195,7 +196,7 @@ export class MoveValidator {
 
     // Suit change cards can always be played
     const isSuitChangeCard = config.specialCards.suitChangeCards.some(sc => 
-      sc.rank === card.rank && (!sc.suit || sc.suit === card.suit)
+      sc.rank === card.rank
     );
 
     if (!matchesSuit && !matchesRank && !isSuitChangeCard) {
