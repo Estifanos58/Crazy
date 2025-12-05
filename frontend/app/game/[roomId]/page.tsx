@@ -35,6 +35,7 @@ export default function GamePage() {
     lastPlayerId,
     blunderActive,
     blunderReason,
+    blunderPlayerId,
     blunderTimeLeft,
     playCard,
     takePunishment,
@@ -439,9 +440,9 @@ export default function GamePage() {
         onSelect={handleSuitSelect}
       />
 
-      {/* Blunder Modal */}
+      {/* Blunder Modal - Only shown to the player who made the blunder */}
       <BlunderModal
-        isOpen={blunderActive && blunderReason !== null}
+        isOpen={blunderActive && blunderReason !== null && socket?.id === blunderPlayerId}
         reason={blunderReason || ''}
         timeLeft={blunderTimeLeft}
         onRevert={handleRevertBlunder}

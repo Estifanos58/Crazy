@@ -207,6 +207,7 @@ const handleInvalidMove = (event: any, set: SetState, get: GetState, getPlayerNa
   const isMyBlunder = event.payload.playerId === get().socket?.id;
   
   if (isMyBlunder && event.payload.canBeChallenged) {
+    // Show modal only to the player who made the blunder
     set({
       blunderActive: true,
       blunderReason: event.payload.reason,
@@ -239,19 +240,22 @@ const handleInvalidMove = (event: any, set: SetState, get: GetState, getPlayerNa
       }
     }, 1000);
   } else if (event.payload.canBeChallenged) {
-    toast.error(`🚨 ${getPlayerName(event.payload.playerId)} made an invalid move! Click "Call Crazy" to challenge!`, {
+    // Show toast to other players - no modal
+    toast.error(`🚨 ${getPlayerName(event.payload.playerId)} made a blunder! Click "Call Crazy" to challenge!`, {
       duration: 5000,
       className: 'border-2 border-red-500',
     });
     
+    // Store blunder info for "Call Crazy" functionality, but don't show modal
     set({
-      blunderActive: true,
+      blunderActive: false, // Don't show modal to other players
       blunderReason: event.payload.reason,
       blunderPlayerId: event.payload.playerId,
       blunderCards: event.payload.cards || [],
       blunderTimeLeft: 8,
     });
     
+    // Clear blunder info after timeout
     setTimeout(() => {
       if (get().blunderPlayerId === event.payload.playerId) {
         set({
