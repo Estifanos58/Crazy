@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Gamepad2, Users, Zap, Globe, Smartphone } from 'lucide-react';
+import { Gamepad2, Users, Zap, Globe, Smartphone, BookOpen } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Modal from '@/components/Modal';
 import UserInfoModal from '@/components/UserInfoModal';
@@ -21,7 +21,7 @@ export default function Home() {
   const [joinMode, setJoinMode] = useState<'create' | 'join'>('create');
   const [targetRoomId, setTargetRoomId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const { connect, setUserInfo, createRoom, joinRoom } = useGameStore();
 
   const handlePlayClick = () => {
@@ -61,11 +61,11 @@ export default function Home() {
   const handleUserInfoSubmit = async (username: string, avatar: string) => {
     setUserInfo(username, avatar);
     setIsLoading(true);
-    
+
     try {
       if (joinMode === 'create') {
         const result = await createRoom();
-        
+
         if (result.success && result.roomId) {
           router.push(`/room/${result.roomId}`);
         } else {
@@ -74,7 +74,7 @@ export default function Home() {
         }
       } else if (joinMode === 'join' && targetRoomId) {
         const result = await joinRoom(targetRoomId);
-        
+
         if (result.success) {
           router.push(`/room/${targetRoomId}`);
         } else {
@@ -94,7 +94,7 @@ export default function Home() {
 
       {/* Hero Section */}
       <section className="relative z-10 flex-grow flex flex-col lg:flex-row items-center justify-center px-4 py-12 sm:py-20 lg:py-40 max-w-7xl mx-auto w-full gap-8 sm:gap-12 lg:gap-24">
-        
+
         {/* Text Content */}
         <div className="flex-1 text-center lg:text-left space-y-8">
           <motion.div
@@ -140,6 +140,18 @@ export default function Home() {
               className="btn-secondary text-lg sm:text-xl px-8 sm:px-12 py-4 sm:py-6 w-full sm:w-auto"
             >
               JOIN GAME
+            </motion.button>
+            <motion.button
+              onClick={() => router.push('/help')}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ delay: 0.6 }}
+              className="btn-secondary text-lg sm:text-xl px-8 sm:px-12 py-4 sm:py-6 w-full sm:w-auto flex items-center justify-center gap-2"
+            >
+              <BookOpen size={24} />
+              HOW TO PLAY
             </motion.button>
           </div>
         </div>
@@ -232,8 +244,8 @@ export default function Home() {
         onClose={() => setShowUserInfo(false)}
         title="IDENTITY VERIFICATION"
       >
-        <UserInfoModal 
-          onSubmit={handleUserInfoSubmit} 
+        <UserInfoModal
+          onSubmit={handleUserInfoSubmit}
           isJoining={joinMode === 'join'}
           isLoading={isLoading}
         />
