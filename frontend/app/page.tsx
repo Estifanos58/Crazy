@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Gamepad2, Users, Zap, Globe, Smartphone, BookOpen } from 'lucide-react';
+import { Gamepad2, Users, Zap, Globe, Smartphone, BookOpen, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Modal from '@/components/Modal';
 import UserInfoModal from '@/components/UserInfoModal';
@@ -21,8 +21,9 @@ export default function Home() {
   const [joinMode, setJoinMode] = useState<'create' | 'join'>('create');
   const [targetRoomId, setTargetRoomId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
 
-  const { connect, setUserInfo, createRoom, joinRoom } = useGameStore();
+  const { connect, setUserInfo, createRoom, joinRoom, username, avatar } = useGameStore();
 
   const handlePlayClick = () => {
     // Clear any previous game session
@@ -36,11 +37,31 @@ export default function Home() {
     setShowJoinGameModal(true);
   };
 
-  const handleJoinSubmit = (roomId: string) => {
+  const handleJoinSubmit = async (roomId: string) => {
     setTargetRoomId(roomId);
     setShowJoinGameModal(false);
     setJoinMode('join');
-    setShowUserInfo(true);
+    setIsEditingProfile(false);
+    
+    if (username) {
+      setIsLoading(true);
+      try {
+        const result = await joinRoom(roomId);
+        if (result.success) {
+          router.push(`/room/${roomId}`);
+        } else {
+          alert('Failed to join room: ' + result.error);
+          setIsLoading(false);
+          setShowUserInfo(true); // Show modal on failure (e.g. name taken)
+        }
+      } catch (error) {
+        console.error(error);
+        setIsLoading(false);
+        setShowUserInfo(true);
+      }
+    } else {
+      setShowUserInfo(true);
+    }
   };
 
   const handleGameSelect = () => {
@@ -48,18 +69,42 @@ export default function Home() {
     setShowModeSelect(true);
   };
 
-  const handleModeSelect = (mode: 'single' | 'multi') => {
+  const handleModeSelect = async (mode: 'single' | 'multi') => {
     if (mode === 'single') {
       alert('Single player mode coming soon!');
       return;
     }
     setJoinMode('create');
     setShowModeSelect(false);
-    setShowUserInfo(true);
+    setIsEditingProfile(false);
+    
+    if (username) {
+      setIsLoading(true);
+      try {
+        const result = await createRoom();
+        if (result.success && result.roomId) {
+          router.push(`/room/${result.roomId}`);
+        } else {
+          alert('Failed to create room: ' + result.error);
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error(error);
+        setIsLoading(false);
+      }
+    } else {
+      setShowUserInfo(true);
+    }
   };
 
   const handleUserInfoSubmit = async (username: string, avatar: string) => {
     setUserInfo(username, avatar);
+    
+    if (isEditingProfile) {
+      setShowUserInfo(false);
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -153,6 +198,22 @@ export default function Home() {
               <BookOpen size={24} />
               <span className='sm:block hidden'>HOW TO PLAY</span>
             </motion.button>
+
+            <motion.button
+              onClick={() => {
+                setIsEditingProfile(true);
+                setShowUserInfo(true);
+              }}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ delay: 0.7 }}
+              className="btn-secondary text-lg sm:text-xl px-8 sm:px-12 py-4 sm:py-6 w-full sm:w-auto flex items-center justify-center gap-2"
+            >
+              <User size={24} />
+              <span className='sm:block hidden'>PROFILE</span>
+            </motion.button>
           </div>
         </div>
 
@@ -242,12 +303,14 @@ export default function Home() {
       <Modal
         isOpen={showUserInfo}
         onClose={() => setShowUserInfo(false)}
-        title="IDENTITY VERIFICATION"
+        title={isEditingProfile ? "EDIT PROFILE" : "IDENTITY VERIFICATION"}
       >
         <UserInfoModal
           onSubmit={handleUserInfoSubmit}
-          isJoining={joinMode === 'join'}
+          isJoining={joinMode === 'join' && !isEditingProfile}
           isLoading={isLoading}
+          initialUsername={username}
+          initialAvatar={avatar}
         />
       </Modal>
 

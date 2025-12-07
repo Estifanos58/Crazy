@@ -25,11 +25,19 @@ interface UserInfoModalProps {
   onSubmit: (username: string, avatar: string) => void;
   isJoining?: boolean;
   isLoading?: boolean;
+  initialUsername?: string;
+  initialAvatar?: string;
 }
 
-export default function UserInfoModal({ onSubmit, isJoining = false, isLoading = false }: UserInfoModalProps) {
-  const [username, setUsername] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0].emoji);
+export default function UserInfoModal({ 
+  onSubmit, 
+  isJoining = false, 
+  isLoading = false,
+  initialUsername = '',
+  initialAvatar = AVATARS[0].emoji
+}: UserInfoModalProps) {
+  const [username, setUsername] = useState(initialUsername);
+  const [selectedAvatar, setSelectedAvatar] = useState(initialAvatar);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

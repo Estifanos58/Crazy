@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
-import { Copy, Check, Settings, Play, Share2, Shield, Cpu } from 'lucide-react';
+import { Copy, Check, Settings, Play, Share2, Shield, Cpu, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Modal from '@/components/Modal';
 import UserInfoModal from '@/components/UserInfoModal';
@@ -34,6 +34,7 @@ export default function RoomPage() {
     isCreator,
     players,
     username,
+    avatar,
     gameStarted,
   } = useGameStore();
 
@@ -50,17 +51,29 @@ export default function RoomPage() {
   }, [socket, connect]);
 
   useEffect(() => {
+    if (!socket) return;
+
     // Check if current user is already in the players list (reconnection)
-    const isAlreadyInRoom = socket && players.some(p => p.id === socket.id);
+    const isAlreadyInRoom = players.some(p => p.id === socket.id);
     
-    // Only show user info modal if socket is connected and user hasn't set their info
-    // AND they haven't already joined the room
-    if (socket && !username && !isAlreadyInRoom) {
-      setShowUserInfo(true);
-    } else if (username || isAlreadyInRoom) {
+    if (!isAlreadyInRoom) {
+      if (username) {
+        // Try to auto-join if we have username
+        joinRoom(roomId).then(result => {
+          if (!result.success) {
+            // If failed (e.g. name taken), show modal
+            setShowUserInfo(true);
+          }
+        }).catch(() => {
+          setShowUserInfo(true);
+        });
+      } else {
+        setShowUserInfo(true);
+      }
+    } else {
       setShowUserInfo(false);
     }
-  }, [socket, username, players]);
+  }, [socket, username, players, roomId, joinRoom]);
 
   const handleUserInfoSubmit = async (username: string, avatar: string) => {
     setUserInfo(username, avatar);
@@ -73,7 +86,7 @@ export default function RoomPage() {
       setIsLoading(false);
     } else {
       alert('Failed to join room: ' + result.error);
-      router.push('/');
+      // Don't redirect, let them try again
       setIsLoading(false);
     }
   };
@@ -127,7 +140,17 @@ export default function RoomPage() {
           </div>
 
           <div className="flex flex-col items-end gap-2 w-full md:w-auto">
-            <span className="text-xs font-mono text-gray-400 uppercase tracking-widest">Room Access Code</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-gray-400 uppercase tracking-widest">Room Access Code</span>
+              <button
+                onClick={() => setShowUserInfo(true)}
+                className="p-1 hover:bg-cyber-primary/20 rounded-md transition-colors text-cyber-primary flex items-center gap-1"
+                title="Edit Profile"
+              >
+                <User size={16} />
+                <span className="text-xs font-mono hidden md:inline">{username || 'PROFILE'}</span>
+              </button>
+            </div>
             <div className="flex items-center gap-3 bg-cyber-black/50 p-2 pr-4 rounded-lg border border-cyber-primary/30 w-full md:w-auto justify-between">
               <code className="text-xl md:text-2xl font-mono text-cyber-primary px-4 tracking-widest">
                 {roomId}
@@ -241,7 +264,13 @@ export default function RoomPage() {
         }}
         title="PLAYER IDENTIFICATION"
       >
-        <UserInfoModal onSubmit={handleUserInfoSubmit} isJoining isLoading={isLoading} />
+        <UserInfoModal 
+          onSubmit={handleUserInfoSubmit} 
+          isJoining 
+          isLoading={isLoading} 
+          initialUsername={username}
+          initialAvatar={avatar}
+        />
       </Modal>
 
       {/* QR Code Modal */}
