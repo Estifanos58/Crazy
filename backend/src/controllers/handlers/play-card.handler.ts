@@ -33,12 +33,13 @@ export class PlayCardHandler {
         const validation = RuleService.validateMove(gameState, socket.id, data.cards);
         const isBlunder = !validation.valid && validation.canChallengeCrazy;
 
-        // Apply card effects
+        // Apply card effects (pass multiple cards flag)
         const { updatedState, events } = RuleService.applyCardEffects(
           gameState,
           socket.id,
           data.cards,
-          data.chosenSuit
+          data.chosenSuit,
+          data.cards.length > 1 // multipleCards flag
         );
 
         // Create blunder state if invalid move
@@ -64,6 +65,10 @@ export class PlayCardHandler {
               cards: data.cards,
             },
           });
+
+          // CRITICAL: On blunder, do NOT update the game state turn
+          // Keep the current player's turn so they can revert or face penalty
+          updatedState.currentTurn = socket.id;
         } else {
           // Clear any existing blunder state on valid move
           room.blunderState = {
@@ -87,6 +92,25 @@ export class PlayCardHandler {
           const rank = (room.finishedPlayers?.length || 0) + 1;
           finishedPlayer.rank = rank;
           finishedPlayer.finishedAt = Date.now();
+          
+          // IMPORTANT: Before removing the finished player, ensure turn advances to NEXT player
+          // The finished player's turn should pass to the next player in sequence
+          const currentIndex = updatedState.players.findIndex(p => p.id === finishedPlayer.id);
+          const direction = updatedState.turnDirection === 'clockwise' ? 1 : -1;
+          const nextIndex = (currentIndex + direction + updatedState.players.length) % updatedState.players.length;
+          
+          // Find next active player (who still has cards, excluding the finished player)
+          let nextPlayerIndex = nextIndex;
+          let attempts = 0;
+          while (attempts < updatedState.players.length) {
+            const potentialNextPlayer = updatedState.players[nextPlayerIndex];
+            if (potentialNextPlayer.id !== finishedPlayer.id && potentialNextPlayer.cards.length > 0) {
+              updatedState.currentTurn = potentialNextPlayer.id;
+              break;
+            }
+            nextPlayerIndex = (nextPlayerIndex + direction + updatedState.players.length) % updatedState.players.length;
+            attempts++;
+          }
           
           // Move player from active players to finished players
           room.players = updatedState.players.filter(p => p.id !== finishedPlayer.id);
@@ -114,6 +138,7 @@ export class PlayCardHandler {
         room.currentSuit = updatedState.currentSuit;
         room.turnDirection = updatedState.turnDirection;
         room.punishmentChain = updatedState.punishmentChain;
+        room.lastSuitChangedBy = updatedState.lastSuitChangedBy; // Track consecutive suit changes
         room.drawCount = 0; // Reset draw count when a card is played
 
         await RoomService.saveRoom(room);

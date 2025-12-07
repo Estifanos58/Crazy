@@ -12,31 +12,36 @@ export class SpecialEffectsHandler {
     state: GameState,
     card: Card,
     config: RuleConfig,
-    chosenSuit?: Suit
+    chosenSuit?: Suit,
+    multipleCards: boolean = false,
+    playerId?: string
   ): { events: GameEvent[]; stateChanges: Partial<GameState>; isReverse: boolean; isSkip: boolean } {
     const events: GameEvent[] = [];
     const stateChanges: Partial<GameState> = {};
     let isReverse = false;
     let isSkip = false;
 
-    // Check and apply reverse
-    const reverseEffect = this.checkReverse(card, state, config);
-    if (reverseEffect) {
-      events.push(reverseEffect.event);
-      Object.assign(stateChanges, reverseEffect.stateChanges);
-      isReverse = true;
+    // When multiple cards are played, reverse and skip effects should NOT trigger
+    if (!multipleCards) {
+      // Check and apply reverse
+      const reverseEffect = this.checkReverse(card, state, config);
+      if (reverseEffect) {
+        events.push(reverseEffect.event);
+        Object.assign(stateChanges, reverseEffect.stateChanges);
+        isReverse = true;
+      }
+
+      // Check and apply skip
+      const skipEffect = this.checkSkip(card, state, config);
+      if (skipEffect) {
+        events.push(skipEffect.event);
+        Object.assign(stateChanges, skipEffect.stateChanges);
+        isSkip = true;
+      }
     }
 
-    // Check and apply skip
-    const skipEffect = this.checkSkip(card, state, config);
-    if (skipEffect) {
-      events.push(skipEffect.event);
-      Object.assign(stateChanges, skipEffect.stateChanges);
-      isSkip = true;
-    }
-
-    // Check and apply suit change
-    const suitChangeEffect = this.checkSuitChange(card, config, chosenSuit);
+    // Check and apply suit change (with consecutive tracking)
+    const suitChangeEffect = this.checkSuitChange(card, config, chosenSuit, state, playerId);
     if (suitChangeEffect) {
       events.push(suitChangeEffect.event);
       Object.assign(stateChanges, suitChangeEffect.stateChanges);
@@ -106,11 +111,15 @@ export class SpecialEffectsHandler {
 
   /**
    * Check and handle suit change effect
+   * Rule: If player A changes suit, player B (next) cannot change suit,
+   * but player C (third) can change suit again
    */
   private static checkSuitChange(
     card: Card,
     config: RuleConfig,
-    chosenSuit?: Suit
+    chosenSuit?: Suit,
+    state?: GameState,
+    playerId?: string
   ): { event: GameEvent; stateChanges: Partial<GameState> } | null {
     const isSuitChange = config.specialCards.suitChangeCards.some(sc =>
       sc.rank === card.rank
@@ -118,6 +127,28 @@ export class SpecialEffectsHandler {
 
     if (!isSuitChange || !chosenSuit) return null;
 
+    // Check if the previous player changed the suit (consecutive suit change)
+    if (state && playerId && state.lastSuitChangedBy) {
+      // Get the previous player
+      const previousPlayer = this.getPreviousPlayerInDirection(state, state.turnDirection);
+      
+      // If the last suit changer was the previous player, current player cannot change suit
+      if (state.lastSuitChangedBy === previousPlayer) {
+        // Second consecutive player - suit change is blocked
+        return {
+          event: {
+            type: 'suit-changed',
+            payload: { suit: card.suit }, // Use card's natural suit
+          },
+          stateChanges: {
+            currentSuit: card.suit, // Keep the card's suit, don't apply chosen suit
+            // Don't update lastSuitChangedBy since suit wasn't actually changed
+          },
+        };
+      }
+    }
+
+    // Normal suit change (first player or third+ player)
     return {
       event: {
         type: 'suit-changed',
@@ -125,6 +156,7 @@ export class SpecialEffectsHandler {
       },
       stateChanges: {
         currentSuit: chosenSuit,
+        lastSuitChangedBy: playerId, // Track who changed the suit
       },
     };
   }

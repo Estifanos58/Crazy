@@ -105,6 +105,7 @@ export class RoomService {
       amount: 0,
       cards: [],
     };
+    room.lastSuitChangedBy = undefined; // Initialize consecutive suit change tracking
     room.rules = {
       cardsPerPlayer: data.cardsPerPlayer,
       customRules: data.customRules,

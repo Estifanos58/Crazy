@@ -73,7 +73,8 @@ export class RuleService {
     gameState: GameState,
     playerId: string,
     cards: Card[],
-    chosenSuit?: Suit
+    chosenSuit?: Suit,
+    multipleCards: boolean = false
   ): { updatedState: GameState; events: GameEvent[] } {
     const config = this.mergeConfig(gameState.ruleConfig);
     const newState = GameStateManager.cloneState(gameState);
@@ -122,7 +123,9 @@ export class RuleService {
         newState,
         lastCard,
         config,
-        chosenSuit
+        chosenSuit,
+        multipleCards, // Pass the multipleCards flag
+        playerId // Pass playerId for consecutive suit change tracking
       );
       events.push(...effectsResult.events);
       Object.assign(newState, effectsResult.stateChanges);

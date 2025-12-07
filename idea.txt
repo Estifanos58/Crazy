@@ -42,3 +42,7 @@ the logic behind blunder and crazy call is ad followes
 
 
     there are tow bugs or errors one when when a user calls crazy he don't have to provide a player id or clicks on a player the backend should automatically see for active blunder state and the player in that bluneder player . the second bug is if a punishment chain is active a player should only take the punishment or respond to punishment not play another card if he do a blunder has been made 
+
+
+
+    here are a few bugs one in multiple cards play config.specialCards.reverseCards.rank or config.specialCards.skipCards should have no effects. when a blunder move is made the current player state should not pass to the next player and i want you to add a new game state so to keep track of the config.specialCards.suitChangeCards if consecuatively droped the second should have no special effect(meaning it can not change the game suit) the third player can change the suit of the playing game using these specialCards but not the second player and after a win the game play should continue to the next player not the previous player 

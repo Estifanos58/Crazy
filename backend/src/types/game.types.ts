@@ -101,6 +101,7 @@ export interface GameState {
   gameStarted: boolean;
   gameEnded: boolean;
   winner?: string;
+  lastSuitChangedBy?: string; // Track who last changed suit (for consecutive suit change rule)
 }
 
 /**
@@ -176,6 +177,7 @@ export interface GameRoom {
   punishmentChain?: PunishmentChain;
   drawCount?: number; // Track how many times current player has drawn (0, 1, or 2)
   blunderState?: BlunderState; // Track active blunder for crazy call
+  lastSuitChangedBy?: string; // Track who last changed suit (for consecutive suit change rule)
   createdAt: number;
 }
 
