@@ -151,7 +151,7 @@ export default function Home() {
               className="btn-secondary text-lg sm:text-xl px-8 sm:px-12 py-4 sm:py-6 w-full sm:w-auto flex items-center justify-center gap-2"
             >
               <BookOpen size={24} />
-              HOW TO PLAY
+              <span className='sm:block hidden'>HOW TO PLAY</span>
             </motion.button>
           </div>
         </div>
