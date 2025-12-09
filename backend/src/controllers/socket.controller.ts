@@ -7,6 +7,7 @@ import { PunishmentHandler } from './handlers/punishment.handler';
 import { CrazyCallHandler } from './handlers/crazy-call.handler';
 import { ReconnectionHandler } from './handlers/reconnection.handler';
 import { BlunderHandler } from './handlers/blunder.handler';
+import { NoRevertHandler } from './handlers/no-revert.handler';
 import { LeaveGameHandler } from './handlers/leave-game.handler';
 import { PlayAgainHandler } from './handlers/play-again.handler';
 
@@ -26,6 +27,7 @@ export class SocketController {
       PunishmentHandler.handle(socket, io);
       CrazyCallHandler.handle(socket, io);
       BlunderHandler.handle(socket, io);
+      NoRevertHandler.handle(socket, io);
       LeaveGameHandler.handle(socket, io);
 
       // Connection management

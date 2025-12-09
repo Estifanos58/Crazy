@@ -29,25 +29,10 @@ export class BlunderHandler {
         // Use the cards from blunder state (more reliable than client data)
         const cardsToRevert = room.blunderState.cards;
 
-        // Check if there are cards to revert in pile
-        if (!room.pile || room.pile.length < cardsToRevert.length) {
-          callback({ success: false, error: 'No cards to revert in pile' });
-          return;
-        }
-
-        // Remove the blundered cards from pile (pop from end)
-        for (let i = 0; i < cardsToRevert.length; i++) {
-          room.pile.pop();
-        }
-
-        // Return cards to player's hand
+        // CRITICAL: Cards were never added to pile during blunder, so just return them
         player.cards.push(...cardsToRevert);
 
-        // Restore previous suit from new top card
-        if (room.pile.length > 0) {
-          const previousTopCard = room.pile[room.pile.length - 1];
-          room.currentSuit = previousTopCard.suit;
-        }
+        // No need to restore suit - game state never changed
 
         // Clear blunder state immediately
         room.blunderState = {

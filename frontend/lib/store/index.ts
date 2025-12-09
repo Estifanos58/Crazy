@@ -54,6 +54,8 @@ export const useGameStore = create<GameStore>()(
       callCrazy: () => actions.callCrazy(get, set),
       
       revertBlunder: () => actions.revertBlunder(get, set),
+      
+      noRevert: () => actions.noRevert(get, set),
 
       setGameState: (state: Partial<GameStore>) => {
         set(state);

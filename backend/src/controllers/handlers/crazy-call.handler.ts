@@ -19,8 +19,6 @@ export class CrazyCallHandler {
           return;
         }
 
-        // Automatically use the player from blunderState - no need for frontend to provide targetPlayerId
-
         const blunderPlayer = room.players.find(p => p.id === room.blunderState!.playerId);
         
         if (!blunderPlayer) {
@@ -28,20 +26,9 @@ export class CrazyCallHandler {
           return;
         }
 
-        // Remove the blundered cards from pile
+        // CRITICAL: Cards were never added to pile during blunder, so just return them
         const cardsToReturn = room.blunderState.cards;
-        for (let i = 0; i < cardsToReturn.length; i++) {
-          room.pile?.pop();
-        }
-
-        // Return cards to player's hand
         blunderPlayer.cards.push(...cardsToReturn);
-
-        // Restore previous suit from new top card
-        if (room.pile && room.pile.length > 0) {
-          const previousTopCard = room.pile[room.pile.length - 1];
-          room.currentSuit = previousTopCard.suit;
-        }
 
         // Apply penalty to the blunder player
         const penaltyCards = this.drawCards(room, room.blunderState.penalty);

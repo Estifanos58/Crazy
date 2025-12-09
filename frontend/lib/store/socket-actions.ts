@@ -192,3 +192,32 @@ export const revertBlunder = (get: GetState, set: SetState): Promise<{ success: 
     });
   });
 };
+
+/**
+ * No revert action (called when timeout expires)
+ */
+export const noRevert = (get: GetState, set: SetState): Promise<{ success: boolean; error?: string }> => {
+  return new Promise((resolve) => {
+    const { socket, roomId } = get();
+    
+    if (!socket || !roomId) {
+      resolve({ success: false, error: 'Not in a room' });
+      return;
+    }
+
+    socket.emit('no-revert', { roomId }, (response: any) => {
+      if (response.success) {
+        set({
+          blunderActive: false,
+          blunderReason: null,
+          blunderPlayerId: null,
+          blunderCards: [],
+          blunderTimeLeft: 0,
+        });
+        resolve({ success: true });
+      } else {
+        resolve({ success: false, error: response.error });
+      }
+    });
+  });
+};

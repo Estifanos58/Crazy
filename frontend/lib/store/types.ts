@@ -47,10 +47,11 @@ export interface GameStore {
   takePunishment: () => Promise<{ success: boolean; error?: string }>;
   callCrazy: () => Promise<{ success: boolean; error?: string }>;
   revertBlunder: () => Promise<{ success: boolean; error?: string }>;
+  noRevert: () => Promise<{ success: boolean; error?: string }>;
   setGameState: (state: Partial<GameStore>) => void;
 }
 
-export const initialState: Omit<GameStore, 'connect' | 'disconnect' | 'setUserInfo' | 'createRoom' | 'joinRoom' | 'startGame' | 'playCard' | 'takePunishment' | 'callCrazy' | 'revertBlunder' | 'setGameState'> = {
+export const initialState: Omit<GameStore, 'connect' | 'disconnect' | 'setUserInfo' | 'createRoom' | 'joinRoom' | 'startGame' | 'playCard' | 'takePunishment' | 'callCrazy' | 'revertBlunder' | 'noRevert' | 'setGameState'> = {
   socket: null,
   isConnected: false,
   username: '',

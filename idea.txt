@@ -46,3 +46,18 @@ the logic behind blunder and crazy call is ad followes
 
 
     here are a few bugs one in multiple cards play config.specialCards.reverseCards.rank or config.specialCards.skipCards should have no effects. when a blunder move is made the current player state should not pass to the next player and i want you to add a new game state so to keep track of the config.specialCards.suitChangeCards if consecuatively droped the second should have no special effect(meaning it can not change the game suit) the third player can change the suit of the playing game using these specialCards but not the second player and after a win the game play should continue to the next player not the previous player 
+
+
+
+
+    here in this code what i am trying to implement is
+         when blunder is made the game state will not change and the previous state will be the playing state only blunder event will happen with blunderState and its penality and after a
+
+         - for the player that made the blunder a modal will be shown and if he don't revert it in 5 sec the socket will emit no-revert to the backend then the system will see for an active room.blunderState if exist with the room.blunderState.playerId with the socket.id the system should automatically return the cards from the room.blunderState.cards to room.blunderState.playerId and give the player room.blunderState.penalty to the romm.blunderState.playerId and room.blunderState should be empty and change the currentPlayer to the next player
+
+         - if a crazyChallenge istriggered the system will see for an active room.blunderState if true revert the room.blunderState.cards to the room.blunderState.playerId and the currentPlayer to the playerId and empty the room.blunderState
+
+         - if a revert-blunder is triggered return the room.blunderState.cards to room.blunderState.playerId and empty the room.blunderState
+
+
+

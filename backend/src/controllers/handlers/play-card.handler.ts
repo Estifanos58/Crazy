@@ -1,7 +1,7 @@
 import type { Server, Socket } from 'socket.io';
 import { RoomService } from '../../services/room.service';
 import { RuleService } from '../../services/rule.service';
-import type { Card, Suit, GameState } from '../../types/game.types';
+import type { Card, Suit, GameState, GameEvent } from '../../types/game.types';
 
 export class PlayCardHandler {
   static handle(socket: Socket, io: Server): void {
@@ -29,24 +29,18 @@ export class PlayCardHandler {
           gameEnded: false,
         };
 
+        let newGameState: GameState = gameState;
+        let gameEvent: GameEvent[]  = [];
+
         // Validate move (but allow blunders)
         const validation = RuleService.validateMove(gameState, socket.id, data.cards);
         const isBlunder = !validation.valid && validation.canChallengeCrazy;
-
-        // Apply card effects (pass multiple cards flag)
-        const { updatedState, events } = RuleService.applyCardEffects(
-          gameState,
-          socket.id,
-          data.cards,
-          data.chosenSuit,
-          data.cards.length > 1 // multipleCards flag
-        );
 
         // Create blunder state if invalid move
         if (isBlunder) {
           const ruleConfig = RuleService.mergeConfig(room.ruleConfig);
           
-          // Create blunder state
+          // Create blunder state - DO NOT modify game state
           room.blunderState = {
             active: true,
             playerId: socket.id,
@@ -55,20 +49,29 @@ export class PlayCardHandler {
             timestamp: Date.now(),
           };
 
+          // Save room with blunderState only
+          await RoomService.saveRoom(room);
+
           // Add blunder event
-          events.push({
+          gameEvent.push({
             type: 'invalid-move',
             payload: {
               playerId: socket.id,
               reason: validation.errors?.[0] || 'Invalid move',
               canBeChallenged: true,
               cards: data.cards,
+              penalty: ruleConfig.crazyChallenge.penalty,
             },
           });
 
-          // CRITICAL: On blunder, do NOT update the game state turn
-          // Keep the current player's turn so they can revert or face penalty
-          updatedState.currentTurn = socket.id;
+          // Emit blunder event immediately
+          gameEvent.forEach(event => {
+            io.to(room.roomId).emit('game-event', event);
+          });
+
+          callback({ success: true, isBlunder: true });
+          console.log(`⚠️ ${socket.id} made a blunder in room ${data.roomId} - waiting for revert or timeout`);
+          return; // CRITICAL: Stop here, don't modify game state
         } else {
           // Clear any existing blunder state on valid move
           room.blunderState = {
@@ -80,8 +83,24 @@ export class PlayCardHandler {
           };
         }
 
+        // Apply card effects (only for valid moves)
+        const { updatedState, events } = RuleService.applyCardEffects(
+          gameState,
+          socket.id,
+          data.cards,
+          data.chosenSuit,
+          data.cards.length > 1 // multipleCards flag
+        );
+
+        newGameState = updatedState;
+        events.forEach(event => {
+          gameEvent.push(event)
+        })
+
+
+
         // Check if any player finished (ran out of cards)
-        const finishedPlayer = updatedState.players.find(p => p.cards.length === 0);
+        const finishedPlayer = newGameState.players.find(p => p.cards.length === 0);
         
         if (finishedPlayer && !room.finishedPlayers) {
           room.finishedPlayers = [];
@@ -95,29 +114,29 @@ export class PlayCardHandler {
           
           // IMPORTANT: Before removing the finished player, ensure turn advances to NEXT player
           // The finished player's turn should pass to the next player in sequence
-          const currentIndex = updatedState.players.findIndex(p => p.id === finishedPlayer.id);
-          const direction = updatedState.turnDirection === 'clockwise' ? 1 : -1;
-          const nextIndex = (currentIndex + direction + updatedState.players.length) % updatedState.players.length;
+          const currentIndex = newGameState.players.findIndex(p => p.id === finishedPlayer.id);
+          const direction = newGameState.turnDirection === 'clockwise' ? 1 : -1;
+          const nextIndex = (currentIndex + direction + newGameState.players.length) % newGameState.players.length;
           
           // Find next active player (who still has cards, excluding the finished player)
           let nextPlayerIndex = nextIndex;
           let attempts = 0;
-          while (attempts < updatedState.players.length) {
-            const potentialNextPlayer = updatedState.players[nextPlayerIndex];
+          while (attempts < newGameState.players.length) {
+            const potentialNextPlayer = newGameState.players[nextPlayerIndex];
             if (potentialNextPlayer.id !== finishedPlayer.id && potentialNextPlayer.cards.length > 0) {
-              updatedState.currentTurn = potentialNextPlayer.id;
+              newGameState.currentTurn = potentialNextPlayer.id;
               break;
             }
-            nextPlayerIndex = (nextPlayerIndex + direction + updatedState.players.length) % updatedState.players.length;
+            nextPlayerIndex = (nextPlayerIndex + direction + newGameState.players.length) % newGameState.players.length;
             attempts++;
           }
           
           // Move player from active players to finished players
-          room.players = updatedState.players.filter(p => p.id !== finishedPlayer.id);
+          room.players = newGameState.players.filter(p => p.id !== finishedPlayer.id);
           room.finishedPlayers!.push(finishedPlayer);
           
           // Emit player-finished event
-          events.push({
+          gameEvent.push({
             type: 'player-finished',
             payload: {
               playerId: finishedPlayer.id,
@@ -129,22 +148,22 @@ export class PlayCardHandler {
           console.log(`🏁 ${finishedPlayer.username} finished in position ${rank}`);
         } else {
           // Update room with new state (no finished players)
-          room.players = updatedState.players;
+          room.players = newGameState.players;
         }
 
-        room.deck = updatedState.deck;
-        room.pile = updatedState.pile;
-        room.currentTurn = updatedState.currentTurn;
-        room.currentSuit = updatedState.currentSuit;
-        room.turnDirection = updatedState.turnDirection;
-        room.punishmentChain = updatedState.punishmentChain;
-        room.lastSuitChangedBy = updatedState.lastSuitChangedBy; // Track consecutive suit changes
+        room.deck = newGameState.deck;
+        room.pile = newGameState.pile;
+        room.currentTurn = newGameState.currentTurn;
+        room.currentSuit = newGameState.currentSuit;
+        room.turnDirection = newGameState.turnDirection;
+        room.punishmentChain = newGameState.punishmentChain;
+        room.lastSuitChangedBy = newGameState.lastSuitChangedBy; // Track consecutive suit changes
         room.drawCount = 0; // Reset draw count when a card is played
 
         await RoomService.saveRoom(room);
 
-        // Broadcast events to all players
-        events.forEach(event => {
+        // Broadcast gameEvent to all players
+        gameEvent.forEach(event => {
           io.to(room.roomId).emit('game-event', event);
         });
 

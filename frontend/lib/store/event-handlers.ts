@@ -167,6 +167,10 @@ export const setupGameEventHandlers = (socket: Socket, set: SetState, get: GetSt
         handleBlunderReverted(event, set, getPlayerName, toast);
         break;
       
+      case 'blunder-timeout':
+        handleBlunderTimeout(event, set, getPlayerName, toast);
+        break;
+      
       case 'win':
         handleWin(event, set, get, toast);
         break;
@@ -224,18 +228,16 @@ const handleInvalidMove = (event: any, set: SetState, get: GetState, getPlayerNa
       if (timeLeft <= 0) {
         clearInterval(countdownInterval);
         const stillActive = get().blunderActive;
-        if (stillActive) {
-          setTimeout(() => {
-            if (get().blunderActive && get().blunderPlayerId === event.payload.playerId) {
-              set({
-                blunderActive: false,
-                blunderReason: null,
-                blunderPlayerId: null,
-                blunderCards: [],
-                blunderTimeLeft: 0,
-              });
-            }
-          }, 3000);
+        if (stillActive && get().blunderPlayerId === event.payload.playerId) {
+          // Automatically trigger no-revert when timer expires
+          const store = get();
+          if (store.noRevert) {
+            store.noRevert().then((result) => {
+              if (!result.success) {
+                console.error('Failed to auto-revert:', result.error);
+              }
+            });
+          }
         }
       }
     }, 1000);
@@ -275,6 +277,21 @@ const handleInvalidMove = (event: any, set: SetState, get: GetState, getPlayerNa
 const handleBlunderReverted = (event: any, set: SetState, getPlayerName: (id: string) => string, toast: any) => {
   toast.success(`${getPlayerName(event.payload.playerId)} reverted their move`, {
     duration: 3000,
+  });
+  
+  set({
+    blunderActive: false,
+    blunderReason: null,
+    blunderPlayerId: null,
+    blunderCards: [],
+    blunderTimeLeft: 0,
+  });
+};
+
+const handleBlunderTimeout = (event: any, set: SetState, getPlayerName: (id: string) => string, toast: any) => {
+  toast.warning(`${getPlayerName(event.payload.playerId)} didn't revert - penalty applied (${event.payload.penalty} cards)`, {
+    duration: 4000,
+    className: 'border-2 border-yellow-500',
   });
   
   set({
