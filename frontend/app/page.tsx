@@ -162,58 +162,66 @@ export default function Home() {
             </p>
           </motion.div>
 
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center lg:justify-start w-full sm:w-auto">
+          <div className="flex flex-col gap-4 w-full max-w-md lg:max-w-none items-center lg:items-start">
+            {/* Primary Action */}
             <motion.button
               onClick={handlePlayClick}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               transition={{ delay: 0.4 }}
-              className="btn-primary text-lg sm:text-xl px-8 sm:px-12 py-4 sm:py-6 shadow-[0_0_30px_rgba(0,243,255,0.3)] w-full sm:w-auto"
+              className="btn-primary w-full sm:w-auto min-w-[280px] sm:min-w-[320px] text-xl sm:text-2xl px-8 py-5 sm:py-6 shadow-[0_0_30px_rgba(0,243,255,0.3)] font-black tracking-wider flex items-center justify-center gap-3"
             >
+              <Gamepad2 className="w-6 h-6 sm:w-8 sm:h-8" />
               INITIALIZE GAME
             </motion.button>
 
+            {/* Secondary Action */}
             <motion.button
               onClick={handleJoinClick}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               transition={{ delay: 0.5 }}
-              className="btn-secondary text-lg sm:text-xl px-8 sm:px-12 py-4 sm:py-6 w-full sm:w-auto"
+              className="btn-secondary w-full sm:w-auto min-w-[280px] sm:min-w-[320px] text-lg sm:text-xl px-8 py-4 sm:py-5 font-bold flex items-center justify-center gap-3"
             >
+              <Users className="w-5 h-5 sm:w-6 sm:h-6" />
               JOIN GAME
             </motion.button>
-            <motion.button
-              onClick={() => router.push('/help')}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              transition={{ delay: 0.6 }}
-              className="btn-secondary text-lg sm:text-xl px-8 sm:px-12 py-4 sm:py-6 w-full sm:w-auto flex items-center justify-center gap-2"
-            >
-              <BookOpen size={24} />
-              <span className='sm:block hidden'>HOW TO PLAY</span>
-            </motion.button>
 
-            <motion.button
-              onClick={() => {
-                setIsEditingProfile(true);
-                setShowUserInfo(true);
-              }}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              transition={{ delay: 0.7 }}
-              className="btn-secondary text-lg sm:text-xl px-8 sm:px-12 py-4 sm:py-6 w-full sm:w-auto flex items-center justify-center gap-2"
-            >
-              <User size={24} />
-              <span className='sm:block hidden'>PROFILE</span>
-            </motion.button>
+            {/* Tertiary Actions */}
+            <div className="flex flex-row gap-3 w-full sm:w-auto min-w-[280px] sm:min-w-[320px]">
+              <motion.button
+                onClick={() => router.push('/help')}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.1)' }}
+                whileTap={{ scale: 0.95 }}
+                transition={{ delay: 0.6 }}
+                className="flex-1 px-4 py-3 rounded-lg border border-white/10 text-gray-300 hover:text-white hover:border-white/30 transition-all flex items-center justify-center gap-2 text-sm font-medium bg-black/20 backdrop-blur-sm"
+              >
+                <BookOpen size={18} />
+                <span>HOW TO PLAY</span>
+              </motion.button>
+
+              <motion.button
+                onClick={() => {
+                  setIsEditingProfile(true);
+                  setShowUserInfo(true);
+                }}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.1)' }}
+                whileTap={{ scale: 0.95 }}
+                transition={{ delay: 0.7 }}
+                className="flex-1 px-4 py-3 rounded-lg border border-white/10 text-gray-300 hover:text-white hover:border-white/30 transition-all flex items-center justify-center gap-2 text-sm font-medium bg-black/20 backdrop-blur-sm"
+              >
+                <User size={18} />
+                <span>PROFILE</span>
+              </motion.button>
+            </div>
           </div>
         </div>
 

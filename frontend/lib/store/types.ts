@@ -14,6 +14,8 @@ export interface GameStore {
   roomId: string | null;
   room: GameRoom | null;
   isCreator: boolean;
+  creatorId: string | null;
+
   
   // Game state
   gameStarted: boolean;
@@ -59,6 +61,7 @@ export const initialState: Omit<GameStore, 'connect' | 'disconnect' | 'setUserIn
   roomId: null,
   room: null,
   isCreator: false,
+  creatorId: null,
   gameStarted: false,
   yourCards: [],
   currentTurn: null,

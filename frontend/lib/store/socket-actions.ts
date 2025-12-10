@@ -23,6 +23,7 @@ export const createRoom = (get: GetState, set: SetState): Promise<{ success: boo
           roomId: response.room.roomId,
           room: response.room,
           isCreator: true,
+          creatorId: response.room.players[0].id,
           players: response.room.players,
           username,
           avatar,

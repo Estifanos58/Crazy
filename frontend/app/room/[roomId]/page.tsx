@@ -32,6 +32,7 @@ export default function RoomPage() {
     joinRoom,
     startGame,
     isCreator,
+    creatorId,
     players,
     username,
     avatar,
@@ -211,7 +212,7 @@ export default function RoomPage() {
                 GAME CONTROLS
               </h3>
 
-              {isCreator ? (
+              {isCreator || creatorId == socket?.id ? (
                 <div className="space-y-3">
                   <button
                     onClick={() => setShowSettings(true)}

@@ -60,7 +60,6 @@ export class PlayCardHandler {
               reason: validation.errors?.[0] || 'Invalid move',
               canBeChallenged: true,
               cards: data.cards,
-              penalty: ruleConfig.crazyChallenge.penalty,
             },
           });
 
