@@ -129,22 +129,26 @@ export class SpecialEffectsHandler {
 
     // Check if the previous player changed the suit (consecutive suit change)
     if (state && playerId && state.lastSuitChangedBy) {
-      // Get the previous player
-      const previousPlayer = this.getPreviousPlayerInDirection(state, state.turnDirection);
-      
-      // If the last suit changer was the previous player, current player cannot change suit
-      if (state.lastSuitChangedBy === previousPlayer) {
-        // Second consecutive player - suit change is blocked
-        return {
-          event: {
-            type: 'suit-changed',
-            payload: { suit: card.suit }, // Use card's natural suit
-          },
-          stateChanges: {
-            currentSuit: card.suit, // Keep the card's suit, don't apply chosen suit
-            // Don't update lastSuitChangedBy since suit wasn't actually changed
-          },
-        };
+      // Find the player before the current playerId
+      const playerIndex = state.players.findIndex(p => p.id === playerId);
+      if (playerIndex !== -1) {
+        const directionModifier = state.turnDirection === 'clockwise' ? -1 : 1;
+        const prevIndex = (playerIndex + directionModifier + state.players.length) % state.players.length;
+        const previousPlayer = state.players[prevIndex].id;
+        
+        // If the last suit changer was the previous player, current player cannot change suit
+        if (state.lastSuitChangedBy === previousPlayer) {
+          // Second consecutive player - suit change is blocked
+          return {
+            event: {
+              type: 'suit-changed',
+              payload: { suit: card.suit }, // Use card's natural suit
+            },
+            stateChanges: {
+              currentSuit: card.suit, // Keep the card's suit, don't apply chosen suit
+            },
+          };
+        }
       }
     }
 

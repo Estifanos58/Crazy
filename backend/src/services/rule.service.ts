@@ -4,6 +4,7 @@ import { PunishmentChainManager } from './handlers/punishment.handler';
 import { SpecialEffectsHandler } from './handlers/special-effects.handler';
 import { CrazyChallengeHandler } from './handlers/crazy-challenge.handler';
 import { GameStateManager } from './managers/game-state.manager';
+import { CardService } from './card.service';
 
 /**
  * RuleService - Main orchestrator for game rules
@@ -24,7 +25,7 @@ export class RuleService {
         reverseCards: [{ rank: '5' }],
         skipCards: [{ rank: '7' }],
         suitChangeCards: [{ rank: 'J' }, { rank: '8' }],
-        dropCards: { rank: '7'}
+        dropCards: { rank: '7' },
       },
       crazyChallenge: {
         enabled: true,
@@ -124,8 +125,8 @@ export class RuleService {
         lastCard,
         config,
         chosenSuit,
-        multipleCards, // Pass the multipleCards flag
-        playerId // Pass playerId for consecutive suit change tracking
+        multipleCards,
+        playerId
       );
       events.push(...effectsResult.events);
       Object.assign(newState, effectsResult.stateChanges);
@@ -137,18 +138,14 @@ export class RuleService {
     const playerFinished = config.winOnEmpty && player.cards.length === 0;
     
     if (playerFinished) {
-      // Player has finished - they're out of the game but game continues
       events.push({
         type: 'win',
         playerId,
         playerName: player.username,
       });
       
-      // Note: Player will be moved to finishedPlayers by the handler
-      // Check if only one player remains
       const activePlayers = newState.players.filter(p => p.cards.length > 0);
       if (activePlayers.length <= 1) {
-        // Game ends when only one or zero players remain
         newState.gameEnded = true;
       }
     }
@@ -156,9 +153,7 @@ export class RuleService {
     // Handle turn advancement based on special effects
     if (!newState.gameEnded) {
       if (isReverse) {
-        // Per rules: when reverse card (5) is played, turn continues with previous player
-        // The direction and currentTurn have already been set in stateChanges
-        // No additional turn advancement needed
+        // Reverse card: previous player continues, direction and currentTurn already set
       } else if (isSkip) {
         // Skip card (7): skip the next player, land on the player after
         GameStateManager.skipAndAdvanceTurn(newState);
@@ -186,7 +181,6 @@ export class RuleService {
     const newState = GameStateManager.cloneState(gameState);
     const result = PunishmentChainManager.takePunishment(newState, playerId);
     
-    // Advance turn
     GameStateManager.advanceTurn(result.updatedState);
 
     return result;
@@ -194,18 +188,13 @@ export class RuleService {
 
   /**
    * Handle taking punishment cards WITHOUT advancing turn
-   * Used when player takes punishment but gets a chance to play
    */
   static takePunishmentCardsNoAdvance(
     gameState: GameState,
     playerId: string
   ): { updatedState: GameState; events: GameEvent[] } {
     const newState = GameStateManager.cloneState(gameState);
-    const result = PunishmentChainManager.takePunishment(newState, playerId);
-    
-    // Do NOT advance turn - player gets to play or draw again
-
-    return result;
+    return PunishmentChainManager.takePunishment(newState, playerId);
   }
 
   /**
@@ -219,29 +208,17 @@ export class RuleService {
     const events: GameEvent[] = [];
     
     const player = newState.players.find(p => p.id === playerId);
-    
     if (!player) {
       throw new Error('Player not found');
     }
 
-    // Draw one card from deck
-    if (newState.deck.length === 0) {
-      // Reshuffle pile into deck (keep top card)
-      if (newState.pile.length > 1) {
-        const topCard = newState.pile.pop()!;
-        newState.deck = this.shuffleDeck([...newState.pile]);
-        newState.pile = [topCard];
-      }
-    }
-
-    if (newState.deck.length > 0) {
-      const drawnCard = newState.deck.pop()!;
-      player.cards.push(drawnCard);
-
+    const drawnCards = CardService.drawCards(newState, 1);
+    if (drawnCards.length > 0) {
+      player.cards.push(...drawnCards);
       events.push({
         type: 'cards_drawn',
         playerId: playerId,
-        amount: 1,
+        amount: drawnCards.length,
       });
     }
 
@@ -253,7 +230,6 @@ export class RuleService {
 
   /**
    * Draw a single card WITHOUT advancing turn
-   * Used for first draw when player has no playable card
    */
   static drawSingleCardNoAdvance(
     gameState: GameState,
@@ -263,47 +239,21 @@ export class RuleService {
     const events: GameEvent[] = [];
     
     const player = newState.players.find(p => p.id === playerId);
-    
     if (!player) {
       throw new Error('Player not found');
     }
 
-    // Draw one card from deck
-    if (newState.deck.length === 0) {
-      // Reshuffle pile into deck (keep top card)
-      if (newState.pile.length > 1) {
-        const topCard = newState.pile.pop()!;
-        newState.deck = this.shuffleDeck([...newState.pile]);
-        newState.pile = [topCard];
-      }
-    }
-
-    if (newState.deck.length > 0) {
-      const drawnCard = newState.deck.pop()!;
-      player.cards.push(drawnCard);
-
+    const drawnCards = CardService.drawCards(newState, 1);
+    if (drawnCards.length > 0) {
+      player.cards.push(...drawnCards);
       events.push({
         type: 'cards_drawn',
         playerId: playerId,
-        amount: 1,
+        amount: drawnCards.length,
       });
     }
 
-    // Do NOT advance turn - player can try again or draw again
-
     return { updatedState: newState, events };
-  }
-
-  /**
-   * Shuffle deck helper
-   */
-  private static shuffleDeck(deck: Card[]): Card[] {
-    const shuffled = [...deck];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    return shuffled;
   }
 
   /**

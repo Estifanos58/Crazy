@@ -77,7 +77,6 @@ const setupConnectionEvents = (socket: Socket, set: SetState, get: GetState) => 
 
   socket.on('connect_error', (error) => {
     console.error('❌ Connection error:', error.message);
-    console.log('🔄 Attempting to reconnect...');
   });
 };
 
@@ -89,15 +88,16 @@ const restoreSession = (socket: Socket, set: SetState, get: GetState) => {
   
   if (!savedState || !savedState.roomId) return;
   
-  console.log('🔄 Attempting to restore session...');
-  const { username, avatar, roomId, isCreator } = savedState;
+  const { username, avatar, roomId, isCreator, playerId, playerToken } = savedState;
   
   // Immediately restore local state
   set({
     username,
     avatar,
     roomId,
-    isCreator,
+    playerId: playerId || null,
+    playerToken: playerToken || null,
+    isCreator: Boolean(isCreator),
     gameStarted: savedState.gameStarted || false,
     yourCards: savedState.yourCards || [],
     currentTurn: savedState.currentTurn || null,
@@ -109,71 +109,96 @@ const restoreSession = (socket: Socket, set: SetState, get: GetState) => {
     finishedPlayers: savedState.finishedPlayers || [],
     gameOver: savedState.gameOver || false,
     lastPlayerId: savedState.lastPlayerId || null,
+    isFinished: Boolean(savedState.isFinished),
+    myRank: savedState.myRank || null,
   });
-  console.log('✅ Local state restored from storage');
   
-  // Try to rejoin the room
-  socket.emit('rejoin-room', { roomId, username, avatar }, (response: any) => {
-    if (response.success) {
-      console.log('✅ Session restored successfully');
-      set({
-        username,
-        avatar,
-        roomId,
-        isCreator,
-        room: response.room,
-        players: response.room.players,
-        gameStarted: response.room.gameStarted || false,
-      });
-      
-      // If game was started, request game state and redirect
-      if (response.room.gameStarted) {
-        requestGameState(socket, roomId, set, get);
+  // Secure rejoin with stored credentials
+  socket.emit(
+    'rejoin-room',
+    { roomId, playerId, playerToken, username, avatar },
+    (response: any) => {
+      if (response && response.success) {
+        console.log('✅ Session restored successfully');
+        const activePid = response.playerId || playerId;
+        const activeTok = response.playerToken || playerToken;
+
+        set({
+          username,
+          avatar,
+          roomId,
+          playerId: activePid,
+          playerToken: activeTok,
+          isCreator: response.room?.creatorId === activePid,
+          room: response.room,
+          players: response.room?.players || [],
+          gameStarted: response.room?.gameStarted || false,
+          gameOver: response.room?.gameOver || false,
+        });
         
-        // Redirect to game page if not already there
-        if (typeof window !== 'undefined' && !window.location.pathname.includes('/game/')) {
-          console.log('🎮 Redirecting to game page...');
-          window.location.href = `/game/${roomId}`;
+        saveStateToStorage(get());
+
+        // If game was started, request latest authoritative game state
+        if (response.room?.gameStarted || response.room?.gameOver) {
+          requestGameState(socket, roomId, activePid, activeTok, set, get);
+          
+          if (typeof window !== 'undefined' && !window.location.pathname.includes('/game/')) {
+            window.location.href = `/game/${roomId}`;
+          }
+        } else {
+          if (typeof window !== 'undefined' && !window.location.pathname.includes('/room/')) {
+            window.location.href = `/room/${roomId}`;
+          }
         }
       } else {
-        // Redirect to room page if in lobby
-        if (typeof window !== 'undefined' && !window.location.pathname.includes('/room/')) {
-          console.log('🚪 Redirecting to room page...');
-          window.location.href = `/room/${roomId}`;
-        }
+        console.log('⚠️ Could not restore session:', response?.error);
       }
-    } else {
-      console.log('⚠️ Could not restore session:', response.error);
-      sessionStorage.removeItem('crazy-game-state');
     }
-  });
+  );
 };
 
 /**
- * Request current game state from server
+ * Request current authoritative game state from server
  */
-const requestGameState = (socket: Socket, roomId: string, set: SetState, get: GetState) => {
-  socket.emit('get-game-state', { roomId }, (stateResponse: any) => {
-    if (stateResponse.success) {
+export const requestGameState = (
+  socket: Socket,
+  roomId: string,
+  playerId: string | null | undefined,
+  playerToken: string | null | undefined,
+  set: SetState,
+  get: GetState
+) => {
+  socket.emit('get-game-state', { roomId, playerId, playerToken }, (stateResponse: any) => {
+    if (stateResponse && stateResponse.success) {
       const data = stateResponse.gameState;
       console.log('🎮 Game state restored:', data);
+      
+      const isFinished = Boolean(data.isFinished);
+      const myRank = data.rank || null;
+
       set({
-        gameStarted: true,
+        gameStarted: !data.gameOver,
+        gameOver: data.gameOver || false,
         yourCards: data.yourCards || [],
         currentTurn: data.currentTurn,
         currentSuit: data.currentSuit || null,
         topCard: data.topCard || null,
         punishmentChain: data.punishmentChain || null,
         players: data.players || [],
-        activePlayers: (data.players || []).filter((p: any) => 
-          p.cardCount > 0 && !get().finishedPlayers.some(fp => fp.id === p.id)
-        ),
-        gameOver: data.gameOver || false,
+        activePlayers: data.players || [],
+        finishedPlayers: data.finishedPlayers || [],
+        drawCount: data.drawCount || 0,
+        isFinished,
+        myRank,
+        blunderActive: data.blunderState?.active || false,
+        blunderReason: data.blunderState?.reason || null,
+        blunderPlayerId: data.blunderState?.playerId || null,
+        blunderTimeLeft: data.blunderState?.timeLeft || 0,
       });
       
       saveStateToStorage(get());
     } else {
-      console.error('Failed to get game state:', stateResponse.error);
+      console.error('Failed to get game state:', stateResponse?.error);
     }
   });
 };

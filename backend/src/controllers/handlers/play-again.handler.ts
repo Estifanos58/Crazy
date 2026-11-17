@@ -1,58 +1,65 @@
 import type { Server, Socket } from 'socket.io';
+import { GameOrchestrator } from '../../services/game.orchestrator';
 import { RoomService } from '../../services/room.service';
 
 export class PlayAgainHandler {
   static handle(socket: Socket, io: Server): void {
-    socket.on('play-again', async (data: { roomId: string }, callback) => {
-      try {
-        const room = await RoomService.getRoom(data.roomId);
-        
-        if (!room) {
-          callback({ success: false, error: 'Room not found' });
-          return;
-        }
+    socket.on(
+      'play-again',
+      async (
+        data: { roomId: string; playerId?: string; playerToken?: string },
+        callback
+      ) => {
+        try {
+          if (!data || !data.roomId) {
+            if (typeof callback === 'function') {
+              callback({ success: false, error: 'Invalid room ID' });
+            }
+            return;
+          }
 
-        // Get the previous game settings (or use defaults)
-        const cardsPerPlayer = room.rules?.cardsPerPlayer || 7;
-        const customRules = room.rules?.customRules;
+          const result = await GameOrchestrator.playAgain(
+            data.roomId,
+            socket.id,
+            data.playerId,
+            data.playerToken
+          );
 
-        // Start a new game with same players and settings
-        const updatedRoom = await RoomService.startGame({
-          roomId: data.roomId,
-          cardsPerPlayer,
-          customRules,
-          ruleConfig: room.ruleConfig,
-        });
-        
-        if (!updatedRoom) {
-          callback({ success: false, error: 'Failed to start new game' });
-          return;
-        }
+          if (!result.success || !result.room) {
+            if (typeof callback === 'function') {
+              callback({ success: false, error: result.error || 'Failed to start new game' });
+            }
+            return;
+          }
 
-        // Send private cards to each player (same as start-game handler)
-        updatedRoom.players.forEach(player => {
-          io.to(player.id).emit('game-started', {
-            roomId: updatedRoom.roomId,
-            players: updatedRoom.players.map(p => ({
-              id: p.id,
-              username: p.username,
-              avatar: p.avatar,
-              cardCount: p.cards.length,
-            })),
-            currentTurn: updatedRoom.currentTurn,
-            yourCards: player.cards,
-            topCard: undefined,
-            currentSuit: undefined,
-            punishmentChain: updatedRoom.punishmentChain,
+          const updatedRoom = result.room;
+          const sanitizedPlayers = RoomService.sanitizePlayers(updatedRoom.players);
+
+          // Send private cards to each player
+          updatedRoom.players.forEach(player => {
+            const target = player.socketId || `player:${player.id}`;
+            io.to(target).emit('game-started', {
+              roomId: updatedRoom.roomId,
+              players: sanitizedPlayers,
+              currentTurn: updatedRoom.currentTurn,
+              yourCards: player.cards,
+              topCard: undefined,
+              currentSuit: undefined,
+              punishmentChain: updatedRoom.punishmentChain,
+            });
           });
-        });
 
-        callback({ success: true });
-        console.log(`🔄 New game started in room: ${data.roomId}`);
-      } catch (error) {
-        console.error('Error starting new game:', error);
-        callback({ success: false, error: (error as Error).message });
+          if (typeof callback === 'function') {
+            callback({ success: true });
+          }
+          console.log(`🔄 New game started in room: ${data.roomId}`);
+        } catch (error) {
+          console.error('Error starting new game:', error);
+          if (typeof callback === 'function') {
+            callback({ success: false, error: (error as Error).message });
+          }
+        }
       }
-    });
+    );
   }
 }

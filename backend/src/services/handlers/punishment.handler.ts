@@ -1,4 +1,5 @@
-import type { GameState, RuleConfig, Card, GameEvent, Suit } from '../../types/game.types';
+import type { GameState, RuleConfig, Card, GameEvent } from '../../types/game.types';
+import { CardService } from '../card.service';
 
 /**
  * PunishmentChainManager - Handles punishment chain logic
@@ -34,7 +35,6 @@ export class PunishmentChainManager {
 
   /**
    * Handle A♠ played
-   * Per rules: A♠ starts a new punishment chain or adds to existing one
    */
   private static handleAceSpade(
     chain: GameState['punishmentChain'],
@@ -43,7 +43,6 @@ export class PunishmentChainManager {
     card: Card
   ) {
     if (chain.active) {
-      // A♠ adds to existing punishment chain
       chain.amount += config.punishment.aceSpadePenalty;
       chain.cards.push(card);
       events.push({
@@ -51,7 +50,6 @@ export class PunishmentChainManager {
         payload: { amount: chain.amount },
       });
     } else {
-      // Start new punishment chain
       chain.active = true;
       chain.amount = config.punishment.aceSpadePenalty;
       chain.cards = [card];
@@ -74,7 +72,7 @@ export class PunishmentChainManager {
     card: Card
   ) {
     chain.amount += config.punishment.rank2Penalty;
-    chain.cards.push(card); // Track the 2 card added to chain
+    chain.cards.push(card);
     events.push({
       type: 'punishment-chain-increased',
       payload: { amount: chain.amount },
@@ -94,7 +92,7 @@ export class PunishmentChainManager {
   ) {
     chain.active = true;
     chain.amount = config.punishment.rank2Penalty;
-    chain.cards = [card]; // Track the 2 card that started the chain
+    chain.cards = [card];
     events.push({
       type: 'punishment-chain-started',
       payload: { amount: chain.amount },
@@ -104,13 +102,12 @@ export class PunishmentChainManager {
   }
 
   /**
-   * Handle chain ending (non-punishment card played)
+   * Handle chain ending
    */
   private static handleChainEnd(
     chain: GameState['punishmentChain'],
     events: GameEvent[]
   ) {
-    // Chain ends - should have been taken
     chain.active = false;
     chain.amount = 0;
     chain.cards = [];
@@ -126,18 +123,18 @@ export class PunishmentChainManager {
     playerId: string
   ): { updatedState: GameState; events: GameEvent[] } {
     const events: GameEvent[] = [];
-    const player = state.players.find((p:any) => p.id === playerId);
+    const player = state.players.find(p => p.id === playerId);
 
     if (!player) {
       throw new Error('Player not found');
     }
 
     const amount = state.punishmentChain.amount;
-    const drawnCards = this.drawCards(state, amount);
+    const drawnCards = CardService.drawCards(state, amount);
     player.cards.push(...drawnCards);
 
     events.push({
-      type: 'punishment_taken',
+      type: 'cards_drawn',
       playerId: playerId,
       amount: amount,
     });
@@ -158,45 +155,5 @@ export class PunishmentChainManager {
     };
 
     return { updatedState: state, events };
-  }
-
-  /**
-   * Draw cards from deck
-   */
-  private static drawCards(state: GameState, amount: number): Card[] {
-    const drawn: Card[] = [];
-    
-    for (let i = 0; i < amount; i++) {
-      if (state.deck.length === 0) {
-        // Reshuffle pile into deck (keep top card)
-        if (state.pile.length > 1) {
-          const topCard = state.pile.pop()!;
-          state.deck = this.shuffleDeck(state.pile);
-          state.pile = [topCard];
-        } else {
-          // No more cards available
-          break;
-        }
-      }
-
-      const card = state.deck.pop();
-      if (card) {
-        drawn.push(card);
-      }
-    }
-
-    return drawn;
-  }
-
-  /**
-   * Shuffle deck
-   */
-  private static shuffleDeck(deck: Card[]): Card[] {
-    const shuffled = [...deck];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    return shuffled;
   }
 }

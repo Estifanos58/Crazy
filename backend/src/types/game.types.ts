@@ -9,13 +9,35 @@ export interface Card {
 }
 
 export interface Player {
-  id: string;
+  id: string; // Unique, persistent player ID
   username: string;
   avatar: string;
-  cards: Card[];
+  cardCount: number; // Public card count visible to other players
   isCreator: boolean;
   rank?: number; // Position when finished (1st, 2nd, 3rd, etc.)
   finishedAt?: number; // Timestamp when finished
+  connected?: boolean;
+}
+
+export interface ServerPlayer {
+  id: string;
+  token: string; // Secret session token for auth
+  username: string;
+  avatar: string;
+  cards: Card[]; // Private server-authoritative cards
+  isCreator: boolean;
+  rank?: number;
+  finishedAt?: number;
+  socketId?: string;
+  connected: boolean;
+}
+
+export interface RankedPlayer {
+  id: string;
+  username: string;
+  avatar: string;
+  rank: number;
+  finishedAt?: number;
 }
 
 export interface GameRules {
@@ -25,18 +47,11 @@ export interface GameRules {
 
 // ============ RULE SYSTEM TYPES ============
 
-/**
- * Card selector for rule configuration
- * Can specify specific cards or just ranks
- */
 export interface CardSelector {
   rank: Rank;
-  suit?: Suit; // If omitted, applies to all suits
+  suit?: Suit;
 }
 
-/**
- * Punishment rule configuration
- */
 export interface PunishmentConfig {
   aceSpadeCard: CardSelector; // Default: A♠
   aceSpadePenalty: number; // Default: 5 cards
@@ -44,9 +59,6 @@ export interface PunishmentConfig {
   rank2Penalty: number; // Default: 2 cards
 }
 
-/**
- * Special card effects configuration
- */
 export interface SpecialCardsConfig {
   reverseCards: CardSelector[]; // Default: any 5
   skipCards: CardSelector[]; // Default: any 7
@@ -54,87 +66,92 @@ export interface SpecialCardsConfig {
   dropCards: CardSelector; // Default: 7
 }
 
-/**
- * Crazy challenge configuration
- */
 export interface CrazyChallengeConfig {
   enabled: boolean;
   penalty: number; // Cards to draw if you lose challenge
   responseTimeMs: number; // Time window to respond
 }
 
-/**
- * Complete rule configuration
- * All fields are user-adjustable
- */
 export interface RuleConfig {
   punishment: PunishmentConfig;
   specialCards: SpecialCardsConfig;
   crazyChallenge: CrazyChallengeConfig;
-  illegalTurnPenalty: number; // Cards for playing out of turn
-  allowDropAllSameSuit: boolean; // Can drop multiple cards with 7
-  winOnEmpty: boolean; // First to empty hand wins
+  illegalTurnPenalty: number;
+  allowDropAllSameSuit: boolean;
+  winOnEmpty: boolean;
 }
 
-/**
- * Punishment chain state
- */
 export interface PunishmentChain {
   active: boolean;
-  amount: number; // Total cards to draw
-  cards: Card[]; // Cards in the chain (A♠, 2s, etc.)
+  amount: number;
+  cards: Card[];
 }
 
-/**
- * Complete game state
- */
+export interface BlunderState {
+  active: boolean;
+  playerId: string; // Player who made the blunder
+  cards: Card[]; // The cards that were played as a blunder
+  penalty: number;
+  timestamp: number;
+  revertTimeoutMs?: number; // default: 5000 ms
+  challengeTimeoutMs?: number; // default: 8000 ms
+}
+
+export interface GameRoom {
+  roomId: string;
+  creatorId: string;
+  players: ServerPlayer[]; // Active players still in the game
+  finishedPlayers?: ServerPlayer[]; // Players who have finished (ran out of cards)
+  gameStarted: boolean;
+  gameOver?: boolean;
+  rules?: GameRules;
+  ruleConfig?: RuleConfig;
+  currentTurn?: string;
+  currentSuit?: Suit;
+  turnDirection?: TurnDirection;
+  deck: Card[];
+  pile?: Card[];
+  punishmentChain?: PunishmentChain;
+  drawCount?: number; // Track how many times current player has drawn (0 or 1)
+  blunderState?: BlunderState;
+  lastSuitChangedBy?: string;
+  createdAt: number;
+}
+
 export interface GameState {
   roomId: string;
-  players: Player[];
+  players: ServerPlayer[];
   deck: Card[];
-  pile: Card[]; // Discard pile
-  currentTurn: string; // Player ID
-  currentSuit: Suit; // Active suit (can differ from top card if changed)
+  pile: Card[];
+  currentTurn: string;
+  currentSuit: Suit;
   turnDirection: TurnDirection;
   punishmentChain: PunishmentChain;
   ruleConfig?: RuleConfig;
   gameStarted: boolean;
   gameEnded: boolean;
   winner?: string;
-  lastSuitChangedBy?: string; // Track who last changed suit (for consecutive suit change rule)
+  lastSuitChangedBy?: string;
 }
 
-/**
- * Game events emitted by rule engine
- */
 export type GameEvent =
-  | { type: 'punishment_added'; card: Card; totalPunishment: number }
-  | { type: 'take_punishment'; playerId: string; amount: number; cards: Card[] }
-  | { type: 'punishment_taken'; playerId: string; amount: number }
-  | { type: 'reverse'; newDirection: TurnDirection }
-  | { type: 'skip'; skippedPlayerId: string }
-  | { type: 'suit_change'; newSuit: Suit; card: Card }
-  | { type: 'crazy_called'; playerId: string; calledBy: string; penalty: number }
-  | { type: 'crazy_challenge_lost'; playerId: string; challengedBy: string; penalty: number }
-  | { type: 'crazy_challenge_won'; playerId: string }
-  | { type: 'cards_drawn'; playerId: string; amount: number }
-  | { type: 'win'; playerId: string; playerName: string }
-  | { type: 'turn_changed'; playerId: string }
   | { type: 'card-played'; payload: { playerId: string; cards: Card[] } }
-  | { type: 'invalid-move'; payload: { playerId: string; reason: string; canBeChallenged: boolean; cards?: Card[] } }
-  | { type: 'blunder-reverted'; payload: { playerId: string; message: string } }
+  | { type: 'cards_drawn'; playerId: string; amount: number }
   | { type: 'punishment-taken'; payload: { playerId: string; amount: number } }
   | { type: 'punishment-chain-started'; payload: { amount: number } }
   | { type: 'punishment-chain-increased'; payload: { amount: number } }
-  | { type: 'turn-reversed'; payload: {} }
+  | { type: 'turn-reversed'; payload: { direction: TurnDirection } }
   | { type: 'player-skipped'; payload: { playerId: string } }
   | { type: 'suit-changed'; payload: { suit: Suit } }
   | { type: 'crazy-called'; payload: { success: boolean; callerId: string; targetId: string; penalty: number } }
-  | { type: 'player-finished'; payload: { playerId: string; playerName: string; rank: number } };
+  | { type: 'invalid-move'; payload: { playerId: string; reason: string; canBeChallenged: boolean; cards?: Card[]; timeoutMs?: number } }
+  | { type: 'blunder-reverted'; payload: { playerId: string; message: string } }
+  | { type: 'blunder-timeout'; payload: { playerId: string; penalty: number; message: string } }
+  | { type: 'win'; playerId: string; playerName: string }
+  | { type: 'player-finished'; payload: { playerId: string; playerName: string; rank: number } }
+  | { type: 'game-over'; payload: { rankings: RankedPlayer[] } }
+  | { type: 'turn-changed'; payload: { playerId: string } };
 
-/**
- * Rule validation result
- */
 export interface RuleValidationResult {
   valid: boolean;
   errors?: string[];
@@ -142,43 +159,10 @@ export interface RuleValidationResult {
   mustTakeCards?: number;
 }
 
-/**
- * Play card action
- */
 export interface PlayCardAction {
   playerId: string;
   cards: Card[];
-  chosenSuit?: Suit; // For suit change cards
-}
-
-// ============ EXISTING TYPES ============
-
-export interface BlunderState {
-  active: boolean;
-  playerId: string; // Player who made the blunder
-  cards: Card[]; // The cards that were played as a blunder
-  penalty: number; // Penalty cards if challenged
-  timestamp: number; // When the blunder occurred
-}
-
-export interface GameRoom {
-  roomId: string;
-  creatorId: string;
-  players: Player[]; // Active players still in the game
-  finishedPlayers?: Player[]; // Players who have finished (ran out of cards)
-  gameStarted: boolean;
-  rules?: GameRules;
-  ruleConfig?: RuleConfig; // New: configurable rules
-  currentTurn?: string;
-  currentSuit?: Suit;
-  turnDirection?: TurnDirection;
-  deck: Card[];
-  pile?: Card[];
-  punishmentChain?: PunishmentChain;
-  drawCount?: number; // Track how many times current player has drawn (0, 1, or 2)
-  blunderState?: BlunderState; // Track active blunder for crazy call
-  lastSuitChangedBy?: string; // Track who last changed suit (for consecutive suit change rule)
-  createdAt: number;
+  chosenSuit?: Suit;
 }
 
 export interface JoinRoomData {
@@ -191,5 +175,5 @@ export interface StartGameData {
   roomId: string;
   cardsPerPlayer: number;
   customRules?: string;
-  ruleConfig?: Partial<RuleConfig>; // New: custom rule configuration
+  ruleConfig?: Partial<RuleConfig>;
 }

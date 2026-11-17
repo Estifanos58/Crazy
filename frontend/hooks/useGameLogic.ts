@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useGameStore } from '@/lib/store';
-import type { Card, RankedPlayer } from '@/types/game.types';
+import type { Card, RankedPlayer, Suit } from '@/types/game.types';
 
 export function useGameLogic() {
   const params = useParams();
@@ -34,7 +34,12 @@ export function useGameLogic() {
     isCreator,
     username,
     avatar,
+    playerId,
+    playerToken,
     drawCount,
+    isFinished,
+    myRank,
+    clearBlunderTimers,
   } = useGameStore();
 
   const [selectedCards, setSelectedCards] = useState<Card[]>([]);
@@ -47,22 +52,26 @@ export function useGameLogic() {
   useEffect(() => {
     // Don't redirect immediately - wait for reconnection
     if (!socket) {
-      // Check if there's saved state indicating we should be in a game
       const savedState = sessionStorage.getItem('crazy-game-state');
       if (!savedState) {
-        // No saved state, redirect to home
         router.push('/');
       } else {
-        // Show reconnecting state
         setIsReconnecting(true);
       }
-      // If there is saved state, the ConnectionManager will handle reconnection
     } else if (isConnected) {
       setIsReconnecting(false);
     }
   }, [socket, isConnected, router]);
 
-  const isYourTurn = socket?.id === currentTurn;
+  // Clean up blunder timers on component unmount
+  useEffect(() => {
+    return () => {
+      clearBlunderTimers();
+    };
+  }, [clearBlunderTimers]);
+
+  const myId = playerId || socket?.id;
+  const isYourTurn = Boolean(myId && currentTurn === myId && !isFinished);
 
   const handleRevertBlunder = async () => {
     setLoadingAction('revert');
@@ -74,7 +83,7 @@ export function useGameLogic() {
   };
 
   const handleCardClick = (card: Card) => {
-    if (isYourTurn) {
+    if (isYourTurn && !isFinished) {
       setSelectedCards(prev => {
         const isSelected = prev.some(c => c.id === card.id);
         if (isSelected) {
@@ -87,7 +96,7 @@ export function useGameLogic() {
   };
 
   const handlePlayCards = async () => {
-    if (selectedCards.length === 0) return;
+    if (selectedCards.length === 0 || isFinished) return;
     
     // Check if playing a single suit-changing card (8 or J)
     const isSuitChangingCard = selectedCards.length === 1 && 
@@ -109,7 +118,7 @@ export function useGameLogic() {
     setLoadingAction(null);
   };
 
-  const handleSuitSelect = async (suit: 'hearts' | 'diamonds' | 'clubs' | 'spades') => {
+  const handleSuitSelect = async (suit: Suit) => {
     setShowSuitModal(false);
     setLoadingAction('play');
     const result = await playCard(pendingCards, suit);
@@ -123,6 +132,7 @@ export function useGameLogic() {
   };
 
   const handleTakePunishment = async () => {
+    if (isFinished) return;
     setLoadingAction('punish');
     const result = await takePunishment();
     if (!result.success) {
@@ -145,59 +155,66 @@ export function useGameLogic() {
   };
 
   const handleConfirmLeave = () => {
-    if (isCreator) {
-      // Creator terminates the game - emit leave event
-      socket?.emit('leave-game', { roomId, isCreator: true });
-    } else {
-      // Regular player leaves - emit leave event
-      socket?.emit('leave-game', { roomId, isCreator: false, username, avatar });
-    }
+    socket?.emit('leave-game', {
+      roomId,
+      isCreator,
+      playerId,
+      playerToken,
+      username,
+      avatar,
+    });
     
+    clearBlunderTimers();
+    sessionStorage.removeItem('crazy-game-state');
     setShowAbortModal(false);
     router.push('/');
   };
 
   const handlePlayAgain = () => {
     setLoadingAction('playAgain');
-    // Emit request to start a new game with same players
-    socket?.emit('play-again', { roomId }, (response: any) => {
-      if (response.success) {
-        // Game will start automatically via game-started event
-        // Just close the game over modal by resetting game over state
-        setGameState({ gameOver: false });
-      } else {
-        alert('Failed to start new game: ' + response.error);
+    socket?.emit(
+      'play-again',
+      { roomId, playerId, playerToken },
+      (response: any) => {
+        if (response && response.success) {
+          setGameState({ gameOver: false, isFinished: false, myRank: null });
+        } else {
+          alert('Failed to start new game: ' + (response?.error || 'Unknown error'));
+        }
+        setLoadingAction(null);
       }
-      setLoadingAction(null);
-    });
+    );
   };
 
   const handleExitGame = () => {
-    // Clear local storage
+    clearBlunderTimers();
     sessionStorage.removeItem('crazy-game-state');
     
-    // Disconnect and navigate home
     if (socket) {
-      socket.emit('leave-game', { roomId, isCreator, username, avatar });
+      socket.emit('leave-game', { roomId, isCreator, playerId, playerToken, username, avatar });
     }
     
     router.push('/');
   };
 
-  // Create rankings for game over modal
+  // Create authoritative rankings for game over modal
   const rankings: RankedPlayer[] = [
     ...finishedPlayers.map(p => ({
       id: p.id,
       username: p.username,
       avatar: p.avatar,
       rank: p.rank || 0,
+      finishedAt: p.finishedAt,
     })),
-    ...activePlayers.map((p, index) => ({
-      id: p.id,
-      username: p.username,
-      avatar: p.avatar,
-      rank: finishedPlayers.length + index + 1,
-    })),
+    ...activePlayers
+      .filter(p => !finishedPlayers.some(fp => fp.id === p.id))
+      .map((p, index) => ({
+        id: p.id,
+        username: p.username,
+        avatar: p.avatar,
+        rank: finishedPlayers.length + index + 1,
+        finishedAt: p.finishedAt,
+      })),
   ].sort((a, b) => a.rank - b.rank);
 
   return {
@@ -222,7 +239,10 @@ export function useGameLogic() {
     isCreator,
     username,
     avatar,
+    playerId,
     drawCount,
+    isFinished,
+    myRank,
     isYourTurn,
     selectedCards,
     showSuitModal,

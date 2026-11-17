@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { GameStore } from './types';
 import { initialState } from './types';
 import { createSocketConnection } from './connection';
+import { clearActiveBlunderTimers } from './event-handlers';
 import * as actions from './socket-actions';
 
 export const useGameStore = create<GameStore>()(
@@ -34,6 +35,7 @@ export const useGameStore = create<GameStore>()(
           socket.disconnect();
           set({ socket: null, isConnected: false });
         }
+        clearActiveBlunderTimers();
       },
 
       setUserInfo: (username: string, avatar: string) => {
@@ -60,14 +62,17 @@ export const useGameStore = create<GameStore>()(
       setGameState: (state: Partial<GameStore>) => {
         set(state);
       },
+
+      clearBlunderTimers: () => {
+        clearActiveBlunderTimers();
+      },
     }),
     {
-      name: 'crazy-user-info', // unique name
-      storage: createJSONStorage(() => localStorage), // (optional) by default, 'localStorage' is used
-      partialize: (state) => ({ username: state.username, avatar: state.avatar } as any), // Only persist user info
+      name: 'crazy-user-info',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({ username: state.username, avatar: state.avatar } as any),
     }
   )
 );
 
-// Re-export types
 export type { GameStore } from './types';

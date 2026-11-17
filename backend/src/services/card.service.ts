@@ -36,7 +36,7 @@ export class CardService {
     remainingDeck: Card[];
   } {
     const playerHands: Card[][] = Array(numPlayers).fill(null).map(() => []);
-    let currentDeck = [...deck];
+    const currentDeck = [...deck];
 
     // Deal cards to each player
     for (let i = 0; i < cardsPerPlayer; i++) {
@@ -56,5 +56,32 @@ export class CardService {
       playerHands,
       remainingDeck: currentDeck,
     };
+  }
+
+  /**
+   * Authoritative method to draw cards from deck with automatic pile reshuffling
+   */
+  static drawCards(room: { deck: Card[]; pile?: Card[] }, amount: number): Card[] {
+    const drawn: Card[] = [];
+
+    for (let i = 0; i < amount; i++) {
+      if (room.deck.length === 0) {
+        if (room.pile && room.pile.length > 1) {
+          const topCard = room.pile.pop()!;
+          room.deck = this.shuffleDeck(room.pile);
+          room.pile = [topCard];
+        } else {
+          // No more cards available
+          break;
+        }
+      }
+
+      const card = room.deck.pop();
+      if (card) {
+        drawn.push(card);
+      }
+    }
+
+    return drawn;
   }
 }

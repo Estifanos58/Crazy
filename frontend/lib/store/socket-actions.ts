@@ -1,6 +1,7 @@
-import type { Card } from '@/types/game.types';
+import type { Card, Suit } from '@/types/game.types';
 import type { GameStore } from './types';
 import { saveStateToStorage } from './storage';
+import { clearActiveBlunderTimers } from './event-handlers';
 
 type GetState = () => GameStore;
 type SetState = (state: Partial<GameStore>) => void;
@@ -18,12 +19,14 @@ export const createRoom = (get: GetState, set: SetState): Promise<{ success: boo
     }
 
     socket.emit('create-room', { username, avatar }, (response: any) => {
-      if (response.success) {
-        const newState = {
+      if (response && response.success) {
+        const newState: Partial<GameStore> = {
           roomId: response.room.roomId,
           room: response.room,
           isCreator: true,
-          creatorId: response.room.players[0].id,
+          creatorId: response.playerId,
+          playerId: response.playerId,
+          playerToken: response.playerToken,
           players: response.room.players,
           username,
           avatar,
@@ -32,7 +35,7 @@ export const createRoom = (get: GetState, set: SetState): Promise<{ success: boo
         saveStateToStorage(newState);
         resolve({ success: true, roomId: response.room.roomId });
       } else {
-        resolve({ success: false, error: response.error });
+        resolve({ success: false, error: response?.error || 'Failed to create room' });
       }
     });
   });
@@ -51,11 +54,15 @@ export const joinRoom = (get: GetState, set: SetState, roomId: string): Promise<
     }
 
     socket.emit('join-room', { roomId, username, avatar }, (response: any) => {
-      if (response.success) {
-        const newState = {
+      if (response && response.success) {
+        const isCreator = response.room?.creatorId === response.playerId;
+        const newState: Partial<GameStore> = {
           roomId: response.room.roomId,
           room: response.room,
-          isCreator: false,
+          isCreator,
+          creatorId: response.room.creatorId,
+          playerId: response.playerId,
+          playerToken: response.playerToken,
           players: response.room.players,
           username,
           avatar,
@@ -64,7 +71,7 @@ export const joinRoom = (get: GetState, set: SetState, roomId: string): Promise<
         saveStateToStorage(newState);
         resolve({ success: true });
       } else {
-        resolve({ success: false, error: response.error });
+        resolve({ success: false, error: response?.error || 'Failed to join room' });
       }
     });
   });
@@ -75,18 +82,18 @@ export const joinRoom = (get: GetState, set: SetState, roomId: string): Promise<
  */
 export const startGame = (get: GetState, cardsPerPlayer: number, customRules?: string): Promise<{ success: boolean; error?: string }> => {
   return new Promise((resolve) => {
-    const { socket, roomId } = get();
+    const { socket, roomId, playerId, playerToken } = get();
     
     if (!socket || !roomId) {
       resolve({ success: false, error: 'Not in a room' });
       return;
     }
 
-    socket.emit('start-game', { roomId, cardsPerPlayer, customRules }, (response: any) => {
-      if (response.success) {
+    socket.emit('start-game', { roomId, playerId, playerToken, cardsPerPlayer, customRules }, (response: any) => {
+      if (response && response.success) {
         resolve({ success: true });
       } else {
-        resolve({ success: false, error: response.error });
+        resolve({ success: false, error: response?.error || 'Failed to start game' });
       }
     });
   });
@@ -95,20 +102,20 @@ export const startGame = (get: GetState, cardsPerPlayer: number, customRules?: s
 /**
  * Play card action
  */
-export const playCard = (get: GetState, cards: Card[], chosenSuit?: string): Promise<{ success: boolean; error?: string }> => {
+export const playCard = (get: GetState, cards: Card[], chosenSuit?: Suit): Promise<{ success: boolean; error?: string }> => {
   return new Promise((resolve) => {
-    const { socket, roomId } = get();
+    const { socket, roomId, playerId, playerToken } = get();
     
     if (!socket || !roomId) {
       resolve({ success: false, error: 'Not in a room' });
       return;
     }
 
-    socket.emit('play-card', { roomId, cards, chosenSuit }, (response: any) => {
-      if (response.success) {
+    socket.emit('play-card', { roomId, playerId, playerToken, cards, chosenSuit }, (response: any) => {
+      if (response && response.success) {
         resolve({ success: true });
       } else {
-        resolve({ success: false, error: response.error });
+        resolve({ success: false, error: response?.error || 'Failed to play card' });
       }
     });
   });
@@ -119,18 +126,18 @@ export const playCard = (get: GetState, cards: Card[], chosenSuit?: string): Pro
  */
 export const takePunishment = (get: GetState): Promise<{ success: boolean; error?: string }> => {
   return new Promise((resolve) => {
-    const { socket, roomId } = get();
+    const { socket, roomId, playerId, playerToken } = get();
     
     if (!socket || !roomId) {
       resolve({ success: false, error: 'Not in a room' });
       return;
     }
 
-    socket.emit('take-punishment', { roomId }, (response: any) => {
-      if (response.success) {
+    socket.emit('take-punishment', { roomId, playerId, playerToken }, (response: any) => {
+      if (response && response.success) {
         resolve({ success: true });
       } else {
-        resolve({ success: false, error: response.error });
+        resolve({ success: false, error: response?.error || 'Failed to draw card' });
       }
     });
   });
@@ -141,15 +148,16 @@ export const takePunishment = (get: GetState): Promise<{ success: boolean; error
  */
 export const callCrazy = (get: GetState, set: SetState): Promise<{ success: boolean; error?: string }> => {
   return new Promise((resolve) => {
-    const { socket, roomId } = get();
+    const { socket, roomId, playerId, playerToken } = get();
     
     if (!socket || !roomId) {
       resolve({ success: false, error: 'Not in a room' });
       return;
     }
 
-    socket.emit('call-crazy', { roomId }, (response: any) => {
-      if (response.success) {
+    socket.emit('call-crazy', { roomId, playerId, playerToken }, (response: any) => {
+      if (response && response.success) {
+        clearActiveBlunderTimers();
         set({
           blunderActive: false,
           blunderReason: null,
@@ -159,7 +167,7 @@ export const callCrazy = (get: GetState, set: SetState): Promise<{ success: bool
         });
         resolve({ success: true });
       } else {
-        resolve({ success: false, error: response.error });
+        resolve({ success: false, error: response?.error || 'Failed to call crazy' });
       }
     });
   });
@@ -170,15 +178,16 @@ export const callCrazy = (get: GetState, set: SetState): Promise<{ success: bool
  */
 export const revertBlunder = (get: GetState, set: SetState): Promise<{ success: boolean; error?: string }> => {
   return new Promise((resolve) => {
-    const { socket, roomId, blunderCards } = get();
+    const { socket, roomId, playerId, playerToken, blunderCards } = get();
     
     if (!socket || !roomId) {
       resolve({ success: false, error: 'Not in a room' });
       return;
     }
 
-    socket.emit('revert-blunder', { roomId, cards: blunderCards }, (response: any) => {
-      if (response.success) {
+    socket.emit('revert-blunder', { roomId, playerId, playerToken, cards: blunderCards }, (response: any) => {
+      if (response && response.success) {
+        clearActiveBlunderTimers();
         set({
           blunderActive: false,
           blunderReason: null,
@@ -188,26 +197,27 @@ export const revertBlunder = (get: GetState, set: SetState): Promise<{ success: 
         });
         resolve({ success: true });
       } else {
-        resolve({ success: false, error: response.error });
+        resolve({ success: false, error: response?.error || 'Failed to revert blunder' });
       }
     });
   });
 };
 
 /**
- * No revert action (called when timeout expires)
+ * No revert action
  */
 export const noRevert = (get: GetState, set: SetState): Promise<{ success: boolean; error?: string }> => {
   return new Promise((resolve) => {
-    const { socket, roomId } = get();
+    const { socket, roomId, playerId, playerToken } = get();
     
     if (!socket || !roomId) {
       resolve({ success: false, error: 'Not in a room' });
       return;
     }
 
-    socket.emit('no-revert', { roomId }, (response: any) => {
-      if (response.success) {
+    socket.emit('no-revert', { roomId, playerId, playerToken }, (response: any) => {
+      if (response && response.success) {
+        clearActiveBlunderTimers();
         set({
           blunderActive: false,
           blunderReason: null,
@@ -217,7 +227,7 @@ export const noRevert = (get: GetState, set: SetState): Promise<{ success: boole
         });
         resolve({ success: true });
       } else {
-        resolve({ success: false, error: response.error });
+        resolve({ success: false, error: response?.error || 'Failed to process timeout' });
       }
     });
   });

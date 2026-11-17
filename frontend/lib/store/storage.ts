@@ -1,5 +1,7 @@
 import type { GameStore } from './types';
 
+const STORAGE_KEY = 'crazy-game-state';
+
 /**
  * Save game state to sessionStorage
  */
@@ -9,8 +11,11 @@ export const saveStateToStorage = (state: Partial<GameStore>) => {
     const stateToSave = {
       username: state.username,
       avatar: state.avatar,
+      playerId: state.playerId,
+      playerToken: state.playerToken,
       roomId: state.roomId,
       isCreator: state.isCreator,
+      creatorId: state.creatorId,
       gameStarted: state.gameStarted,
       yourCards: state.yourCards,
       currentTurn: state.currentTurn,
@@ -22,9 +27,10 @@ export const saveStateToStorage = (state: Partial<GameStore>) => {
       finishedPlayers: state.finishedPlayers,
       gameOver: state.gameOver,
       lastPlayerId: state.lastPlayerId,
+      isFinished: state.isFinished,
+      myRank: state.myRank,
     };
-    sessionStorage.setItem('crazy-game-state', JSON.stringify(stateToSave));
-    console.log('💾 State saved to storage');
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
   } catch (error) {
     console.error('Failed to save state:', error);
   }
@@ -33,10 +39,10 @@ export const saveStateToStorage = (state: Partial<GameStore>) => {
 /**
  * Restore game state from sessionStorage
  */
-export const restoreStateFromStorage = () => {
+export const restoreStateFromStorage = (): Partial<GameStore> | null => {
   if (typeof window === 'undefined') return null;
   try {
-    const saved = sessionStorage.getItem('crazy-game-state');
+    const saved = sessionStorage.getItem(STORAGE_KEY);
     return saved ? JSON.parse(saved) : null;
   } catch (error) {
     console.error('Failed to restore state:', error);
@@ -49,5 +55,5 @@ export const restoreStateFromStorage = () => {
  */
 export const clearStateFromStorage = () => {
   if (typeof window === 'undefined') return;
-  sessionStorage.removeItem('crazy-game-state');
+  sessionStorage.removeItem(STORAGE_KEY);
 };

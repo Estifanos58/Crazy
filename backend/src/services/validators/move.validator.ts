@@ -1,7 +1,7 @@
 import type { GameState, RuleConfig, Card } from '../../types/game.types';
 
 /**
- * MoveValidator - Handles move validation logic
+ * MoveValidator - Authoritative move validation logic
  */
 export class MoveValidator {
   /**
@@ -15,12 +15,12 @@ export class MoveValidator {
   ): { valid: boolean; errors: string[]; canChallengeCrazy: boolean } {
     const errors: string[] = [];
 
-    // Check if it's player's turn
+    // Strictly enforce turn ownership - playing out of turn is NEVER a challengeable blunder
     if (gameState.currentTurn !== playerId) {
       return {
         valid: false,
         errors: ['Not your turn'],
-        canChallengeCrazy: config.crazyChallenge.enabled,
+        canChallengeCrazy: false,
       };
     }
 
@@ -30,9 +30,29 @@ export class MoveValidator {
       return { valid: false, errors: ['Player not found'], canChallengeCrazy: false };
     }
 
-    // Validate cards are in player's hand
+    // Validate cards payload
+    if (!cards || !Array.isArray(cards) || cards.length === 0) {
+      return { valid: false, errors: ['No cards played'], canChallengeCrazy: false };
+    }
+
+    // Reject duplicate card IDs within the played cards
+    const cardIds = new Set<string>();
     for (const card of cards) {
-      if (!player.cards.some(c => c.id === card.id)) {
+      if (!card || !card.id || !card.rank || !card.suit) {
+        return { valid: false, errors: ['Invalid card format'], canChallengeCrazy: false };
+      }
+      if (cardIds.has(card.id)) {
+        return { valid: false, errors: ['Duplicate card played'], canChallengeCrazy: false };
+      }
+      cardIds.add(card.id);
+    }
+
+    // Validate cards are strictly in player's authoritative server hand
+    for (const card of cards) {
+      const cardInHand = player.cards.find(
+        c => c.id === card.id && c.rank === card.rank && c.suit === card.suit
+      );
+      if (!cardInHand) {
         errors.push(`Card ${card.rank} of ${card.suit} not in your hand`);
       }
     }
@@ -77,27 +97,31 @@ export class MoveValidator {
     const punishmentCards = gameState.punishmentChain.cards;
     const lastPunishmentCard = punishmentCards[punishmentCards.length - 1];
 
+    if (!lastPunishmentCard) return false;
 
-
-    // // Check if it's A♠ (can respond to 2♠)
-    if (card.rank === config.punishment.aceSpadeCard.rank && 
-        card.suit === config.punishment.aceSpadeCard.suit && lastPunishmentCard.rank === config.punishment.rank2Cards[0] && lastPunishmentCard.suit === 'spades') {
+    // Check if it's A♠ (can respond to 2♠)
+    if (
+      card.rank === config.punishment.aceSpadeCard.rank && 
+      card.suit === config.punishment.aceSpadeCard.suit && 
+      config.punishment.rank2Cards.includes(lastPunishmentCard.rank) && 
+      lastPunishmentCard.suit === 'spades'
+    ) {
       return true;
     }
 
-    // Check if it's a 2 - must be same suit as the punishment initiator
+    // Check if it's a 2
     if (config.punishment.rank2Cards.includes(card.rank)) {
-      // Get the last card in the punishment chain
       if (punishmentCards.length > 0) {
-        // If punishment started with A♠, any 2 of spades can respond
-        if (lastPunishmentCard.rank === config.punishment.aceSpadeCard.rank &&
-            lastPunishmentCard.suit === config.punishment.aceSpadeCard.suit) {
+        // If punishment started with A♠, 2 of spades can respond
+        if (
+          lastPunishmentCard.rank === config.punishment.aceSpadeCard.rank &&
+          lastPunishmentCard.suit === config.punishment.aceSpadeCard.suit
+        ) {
           return card.suit === 'spades';
         }
         // Otherwise, 2 must match the suit of the last punishment card
         return card.suit === lastPunishmentCard.suit;
       }
-      // If no cards in chain yet, any 2 can start it
       return true;
     }
 
@@ -107,9 +131,9 @@ export class MoveValidator {
   /**
    * Validate multiple cards play
    * Per rules: 
-   * 1) All cards must have same suit (no different suits within thrown cards)
+   * 1) All cards must have same suit
    * 2) The suit must match the current playing suit
-   * 3) Must have a drop/skip card (7) present to drop multiple cards
+   * 3) Must have a drop card (7) present
    */
   private static validateMultipleCards(
     cards: Card[],
@@ -124,22 +148,6 @@ export class MoveValidator {
       };
     }
 
-    // // Check if any card is a suit-changing card (J or 8)
-    // const hasSuitChangeCard = cards.some(c => 
-    //   config.specialCards.suitChangeCards.some(sc => 
-    //     sc.rank === c.rank && (!sc.suit || sc.suit === c.suit)
-    //   )
-    // );
-
-    // // Suit-changing cards (J, 8) CANNOT be played with other cards
-    // if (hasSuitChangeCard) {
-    //   return {
-    //     valid: false,
-    //     errors: ['Suit-changing cards (J, 8) must be played alone'],
-    //     canChallengeCrazy: config.crazyChallenge.enabled,
-    //   };
-    // }
-
     // Must have a drop card (7) per rules
     const hasDropCard = cards.some(c => 
       c.rank === config.specialCards.dropCards.rank
@@ -153,7 +161,7 @@ export class MoveValidator {
       };
     }
 
-    // All must be same suit (no different suits within thrown cards list)
+    // All must be same suit
     const firstSuit = cards[0].suit;
     const allSameSuit = cards.every(c => c.suit === firstSuit);
     
@@ -165,7 +173,7 @@ export class MoveValidator {
       };
     }
 
-    // Per rules: The suits of the thrown cards must match the current playing suit
+    // The suits of the thrown cards must match the current playing suit
     if (gameState.pile.length > 0 && firstSuit !== gameState.currentSuit) {
       return {
         valid: false,
@@ -196,7 +204,7 @@ export class MoveValidator {
 
     // Suit change cards can always be played
     const isSuitChangeCard = config.specialCards.suitChangeCards.some(sc => 
-      sc.rank === card.rank
+      sc.rank === card.rank && (!sc.suit || sc.suit === card.suit)
     );
 
     if (!matchesSuit && !matchesRank && !isSuitChangeCard) {
