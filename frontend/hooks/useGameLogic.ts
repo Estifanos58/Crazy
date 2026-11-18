@@ -1,7 +1,36 @@
-import { useState, useEffect } from 'react';
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { useGameStore } from '@/lib/store';
-import type { Card, RankedPlayer, Suit } from '@/types/game.types';
+import { restoreSessionFromStorage } from '@/lib/store/storage';
+import type { Card, RankedPlayer, Rank, Suit } from '@/types/game.types';
+
+export type SortMode = 'none' | 'suit' | 'rank';
+
+const SUIT_ORDER: Record<Suit, number> = {
+  spades: 0,
+  hearts: 1,
+  clubs: 2,
+  diamonds: 3,
+};
+
+const RANK_ORDER: Record<Rank, number> = {
+  A: 14,
+  K: 13,
+  Q: 12,
+  J: 11,
+  '10': 10,
+  '9': 9,
+  '8': 8,
+  '7': 7,
+  '6': 6,
+  '5': 5,
+  '4': 4,
+  '3': 3,
+  '2': 2,
+};
 
 export function useGameLogic() {
   const params = useParams();
@@ -11,6 +40,8 @@ export function useGameLogic() {
   const {
     socket,
     isConnected,
+    isRestoringSession,
+    roomId: storeRoomId,
     gameStarted,
     yourCards,
     players,
@@ -19,6 +50,7 @@ export function useGameLogic() {
     gameOver,
     currentTurn,
     currentSuit,
+    turnDirection,
     topCard,
     punishmentChain,
     lastPlayerId,
@@ -26,19 +58,25 @@ export function useGameLogic() {
     blunderReason,
     blunderPlayerId,
     blunderTimeLeft,
+    blunderTotalTime,
     playCard,
     takePunishment,
     callCrazy,
     revertBlunder,
-    setGameState,
+    playAgain,
+    leaveGame,
+    fetchGameState,
     isCreator,
     username,
     avatar,
     playerId,
-    playerToken,
     drawCount,
+    deckCount,
+    pileCount,
+    ruleConfig,
     isFinished,
     myRank,
+    terminatedMessage,
     clearBlunderTimers,
   } = useGameStore();
 
@@ -46,74 +84,140 @@ export function useGameLogic() {
   const [showSuitModal, setShowSuitModal] = useState(false);
   const [pendingCards, setPendingCards] = useState<Card[]>([]);
   const [showAbortModal, setShowAbortModal] = useState(false);
-  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [showRulesModal, setShowRulesModal] = useState(false);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>('suit');
 
+  // Redirect home when room is terminated by host
   useEffect(() => {
-    // Don't redirect immediately - wait for reconnection
-    if (!socket) {
-      const savedState = sessionStorage.getItem('crazy-game-state');
-      if (!savedState) {
+    if (terminatedMessage) {
+      const timeout = setTimeout(() => {
         router.push('/');
-      } else {
-        setIsReconnecting(true);
-      }
-    } else if (isConnected) {
-      setIsReconnecting(false);
+      }, 1800);
+      return () => clearTimeout(timeout);
     }
-  }, [socket, isConnected, router]);
+  }, [terminatedMessage, router]);
 
-  // Clean up blunder timers on component unmount
+  // Verify session presence and sync authoritative game state on mount/reconnect
+  useEffect(() => {
+    if (isRestoringSession) return;
+
+    const saved = restoreSessionFromStorage();
+    const hasSessionForRoom =
+      (storeRoomId === roomId && Boolean(playerId)) || (saved && saved.roomId === roomId);
+
+    if (!hasSessionForRoom) {
+      router.replace('/');
+      return;
+    }
+
+    if (isConnected && playerId && storeRoomId === roomId && !gameStarted && !gameOver) {
+      void fetchGameState(roomId);
+    }
+  }, [
+    isConnected,
+    isRestoringSession,
+    playerId,
+    storeRoomId,
+    roomId,
+    gameStarted,
+    gameOver,
+    fetchGameState,
+    router,
+  ]);
+
+  // Clear selection whenever hand changes or turn ends
+  useEffect(() => {
+    setSelectedCards((prev) => prev.filter((sel) => yourCards.some((c) => c.id === sel.id)));
+  }, [yourCards]);
+
   useEffect(() => {
     return () => {
       clearBlunderTimers();
     };
   }, [clearBlunderTimers]);
 
-  const myId = playerId || socket?.id;
-  const isYourTurn = Boolean(myId && currentTurn === myId && !isFinished);
+  const isYourTurn = Boolean(playerId && currentTurn === playerId && !isFinished && !gameOver);
+  const isMyBlunder = Boolean(
+    blunderActive && blunderReason !== null && playerId && blunderPlayerId === playerId
+  );
+  const canCallCrazy = Boolean(
+    playerId &&
+      blunderPlayerId &&
+      blunderPlayerId !== playerId &&
+      !isFinished &&
+      !gameOver &&
+      blunderTimeLeft > 0
+  );
+
+  const sortedCards = useMemo(() => {
+    if (sortMode === 'none') return yourCards;
+    return [...yourCards].sort((a, b) => {
+      if (sortMode === 'suit') {
+        const suitDiff = SUIT_ORDER[a.suit] - SUIT_ORDER[b.suit];
+        if (suitDiff !== 0) return suitDiff;
+        return RANK_ORDER[b.rank] - RANK_ORDER[a.rank];
+      }
+      const rankDiff = RANK_ORDER[b.rank] - RANK_ORDER[a.rank];
+      if (rankDiff !== 0) return rankDiff;
+      return SUIT_ORDER[a.suit] - SUIT_ORDER[b.suit];
+    });
+  }, [yourCards, sortMode]);
+
+  const isSuitChangeCard = (card: Card): boolean => {
+    const configured = ruleConfig?.specialCards?.suitChangeCards;
+    if (configured) {
+      return configured.some(
+        (selector) => selector.rank === card.rank && (!selector.suit || selector.suit === card.suit)
+      );
+    }
+    return card.rank === '8' || card.rank === 'J';
+  };
 
   const handleRevertBlunder = async () => {
     setLoadingAction('revert');
     const result = await revertBlunder();
     if (!result.success) {
-      alert('Failed to revert move: ' + result.error);
+      toast.error(result.error || 'Could not revert move');
     }
     setLoadingAction(null);
   };
 
   const handleCardClick = (card: Card) => {
-    if (isYourTurn && !isFinished) {
-      setSelectedCards(prev => {
-        const isSelected = prev.some(c => c.id === card.id);
-        if (isSelected) {
-          return prev.filter(c => c.id !== card.id);
-        } else {
-          return [...prev, card];
-        }
-      });
-    }
+    if (!isYourTurn || isFinished || loadingAction !== null) return;
+
+    setSelectedCards((prev) => {
+      const exists = prev.some((c) => c.id === card.id);
+      if (exists) {
+        return prev.filter((c) => c.id !== card.id);
+      }
+      return [...prev, card];
+    });
+  };
+
+  const handleClearSelection = () => {
+    setSelectedCards([]);
   };
 
   const handlePlayCards = async () => {
-    if (selectedCards.length === 0 || isFinished) return;
-    
-    // Check if playing a single suit-changing card (8 or J)
-    const isSuitChangingCard = selectedCards.length === 1 && 
-      (selectedCards[0].rank === '8' || selectedCards[0].rank === 'J');
-    
-    if (isSuitChangingCard) {
+    if (selectedCards.length === 0 || isFinished || loadingAction !== null) return;
+
+    if (
+      selectedCards.length === 1 &&
+      !punishmentChain?.active &&
+      isSuitChangeCard(selectedCards[0])
+    ) {
       setPendingCards(selectedCards);
       setShowSuitModal(true);
       return;
     }
-    
+
     setLoadingAction('play');
     const result = await playCard(selectedCards);
     if (result.success) {
       setSelectedCards([]);
     } else {
-      alert(result.error);
+      toast.error(result.error || 'Could not play card');
     }
     setLoadingAction(null);
   };
@@ -126,26 +230,27 @@ export function useGameLogic() {
       setSelectedCards([]);
       setPendingCards([]);
     } else {
-      alert(result.error);
+      toast.error(result.error || 'Could not play card');
     }
     setLoadingAction(null);
   };
 
   const handleTakePunishment = async () => {
-    if (isFinished) return;
+    if (!isYourTurn || isFinished || loadingAction !== null) return;
     setLoadingAction('punish');
     const result = await takePunishment();
     if (!result.success) {
-      alert(result.error);
+      toast.error(result.error || 'Could not complete draw action');
     }
     setLoadingAction(null);
   };
 
   const handleCallCrazy = async () => {
+    if (loadingAction !== null) return;
     setLoadingAction('crazy');
     const result = await callCrazy();
     if (!result.success) {
-      alert(result.error);
+      toast.error(result.error || 'Could not call Crazy');
     }
     setLoadingAction(null);
   };
@@ -154,108 +259,113 @@ export function useGameLogic() {
     setShowAbortModal(true);
   };
 
-  const handleConfirmLeave = () => {
-    socket?.emit('leave-game', {
-      roomId,
-      isCreator,
-      playerId,
-      playerToken,
-      username,
-      avatar,
-    });
-    
-    clearBlunderTimers();
-    sessionStorage.removeItem('crazy-game-state');
+  const handleConfirmLeave = async () => {
+    setLoadingAction('leave');
+    await leaveGame(isCreator);
     setShowAbortModal(false);
+    setLoadingAction(null);
     router.push('/');
   };
 
-  const handlePlayAgain = () => {
+  const handlePlayAgain = async () => {
     setLoadingAction('playAgain');
-    socket?.emit(
-      'play-again',
-      { roomId, playerId, playerToken },
-      (response: any) => {
-        if (response && response.success) {
-          setGameState({ gameOver: false, isFinished: false, myRank: null });
-        } else {
-          alert('Failed to start new game: ' + (response?.error || 'Unknown error'));
-        }
-        setLoadingAction(null);
-      }
-    );
+    const result = await playAgain();
+    if (!result.success) {
+      toast.error(result.error || 'Could not start a new match');
+    }
+    setLoadingAction(null);
   };
 
-  const handleExitGame = () => {
-    clearBlunderTimers();
-    sessionStorage.removeItem('crazy-game-state');
-    
-    if (socket) {
-      socket.emit('leave-game', { roomId, isCreator, playerId, playerToken, username, avatar });
-    }
-    
+  const handleExitGame = async () => {
+    await leaveGame(false);
     router.push('/');
   };
 
-  // Create authoritative rankings for game over modal
-  const rankings: RankedPlayer[] = [
-    ...finishedPlayers.map(p => ({
-      id: p.id,
-      username: p.username,
-      avatar: p.avatar,
-      rank: p.rank || 0,
-      finishedAt: p.finishedAt,
-    })),
-    ...activePlayers
-      .filter(p => !finishedPlayers.some(fp => fp.id === p.id))
-      .map((p, index) => ({
+  const rankings: RankedPlayer[] = useMemo(() => {
+    return [
+      ...finishedPlayers.map((p) => ({
         id: p.id,
         username: p.username,
         avatar: p.avatar,
-        rank: finishedPlayers.length + index + 1,
+        rank: p.rank || 0,
         finishedAt: p.finishedAt,
       })),
-  ].sort((a, b) => a.rank - b.rank);
+      ...activePlayers
+        .filter((p) => !finishedPlayers.some((fp) => fp.id === p.id))
+        .map((p, index) => ({
+          id: p.id,
+          username: p.username,
+          avatar: p.avatar,
+          rank: finishedPlayers.length + index + 1,
+          finishedAt: p.finishedAt,
+        })),
+    ].sort((a, b) => a.rank - b.rank);
+  }, [finishedPlayers, activePlayers]);
+
+  const blunderPlayerName = useMemo(() => {
+    if (!blunderPlayerId) return null;
+    const found = [...players, ...finishedPlayers].find((p) => p.id === blunderPlayerId);
+    return found?.username || 'A player';
+  }, [blunderPlayerId, players, finishedPlayers]);
+
+  const currentTurnPlayer = useMemo(() => {
+    if (!currentTurn) return null;
+    return activePlayers.find((p) => p.id === currentTurn) || null;
+  }, [currentTurn, activePlayers]);
 
   return {
     roomId,
     socket,
     isConnected,
+    isReconnecting: !isConnected || isRestoringSession,
     gameStarted,
-    yourCards,
+    yourCards: sortedCards,
     players,
     activePlayers,
     finishedPlayers,
     gameOver,
     currentTurn,
+    currentTurnPlayer,
     currentSuit,
+    turnDirection,
     topCard,
     punishmentChain,
     lastPlayerId,
     blunderActive,
     blunderReason,
     blunderPlayerId,
+    blunderPlayerName,
     blunderTimeLeft,
+    blunderTotalTime,
+    isMyBlunder,
+    canCallCrazy,
     isCreator,
     username,
     avatar,
     playerId,
     drawCount,
+    deckCount,
+    pileCount,
+    ruleConfig,
     isFinished,
     myRank,
     isYourTurn,
     selectedCards,
+    sortMode,
+    setSortMode,
     showSuitModal,
     pendingCards,
     showAbortModal,
-    isReconnecting,
+    showRulesModal,
     loadingAction,
     rankings,
     setShowSuitModal,
     setPendingCards,
     setShowAbortModal,
+    setShowRulesModal,
     handleRevertBlunder,
     handleCardClick,
+    handleClearSelection,
     handlePlayCards,
     handleSuitSelect,
     handleTakePunishment,

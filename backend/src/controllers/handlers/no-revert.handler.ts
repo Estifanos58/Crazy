@@ -1,32 +1,30 @@
 import type { Server, Socket } from 'socket.io';
-import { GameOrchestrator } from '../../services/game.orchestrator';
+import { formatZodError, roomActionSchema } from '../../validation/socket.schemas';
+import { logger } from '../../utils/logger';
 
+/**
+ * Client-initiated blunder expiration is explicitly disallowed.
+ * Only authoritative server-side timers in BlunderService may resolve expired blunders.
+ */
 export class NoRevertHandler {
-  static handle(socket: Socket, io: Server): void {
-    socket.on(
-      'no-revert',
-      async (data: { roomId: string }, callback) => {
-        try {
-          if (!data || !data.roomId) {
-            if (typeof callback === 'function') {
-              callback({ success: false, error: 'Invalid room ID' });
-            }
-            return;
-          }
+  static handle(socket: Socket, _io: Server): void {
+    socket.on('no-revert', (rawPayload: unknown, callback) => {
+      const parsed = roomActionSchema.safeParse(rawPayload);
+      const roomId = parsed.success ? parsed.data.roomId : undefined;
 
-          // Trigger server-controlled blunder timeout
-          await GameOrchestrator.handleBlunderTimeout(data.roomId, io);
+      logger.warn('Rejected unauthorized client no-revert attempt', {
+        socketId: socket.id,
+        roomId,
+      });
 
-          if (typeof callback === 'function') {
-            callback({ success: true });
-          }
-        } catch (error) {
-          console.error('Error handling no-revert:', error);
-          if (typeof callback === 'function') {
-            callback({ success: false, error: (error as Error).message });
-          }
-        }
+      if (typeof callback === 'function') {
+        callback({
+          success: false,
+          error: parsed.success
+            ? 'Blunder timeouts are resolved automatically by the server'
+            : formatZodError(parsed.error),
+        });
       }
-    );
+    });
   }
 }

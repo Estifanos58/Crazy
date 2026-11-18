@@ -1,4 +1,5 @@
-import type { GameState, RuleConfig, Card, GameEvent } from '../../types/game.types';
+import type { Card, GameEvent, GameState, RuleConfig } from '../../types/game.types';
+import { matchesCardSelector } from '../../utils/card-selector';
 import { CardService } from '../card.service';
 
 /**
@@ -14,11 +15,16 @@ export class PunishmentChainManager {
     config: RuleConfig
   ): { chain: typeof state.punishmentChain; events: GameEvent[] } {
     const events: GameEvent[] = [];
-    const chain = { ...state.punishmentChain };
+    const chain = {
+      ...state.punishmentChain,
+      cards: [...state.punishmentChain.cards],
+    };
 
-    const isAceSpade = card.rank === config.punishment.aceSpadeCard.rank && 
-                       card.suit === config.punishment.aceSpadeCard.suit;
-    const isRank2 = config.punishment.rank2Cards.includes(card.rank);
+    const isAceSpade =
+      config.punishment.aceSpadePenalty > 0 &&
+      matchesCardSelector(card, config.punishment.aceSpadeCard);
+    const isRank2 =
+      config.punishment.rank2Penalty > 0 && config.punishment.rank2Cards.includes(card.rank);
 
     if (isAceSpade) {
       return this.handleAceSpade(chain, config, events, card);
@@ -33,9 +39,6 @@ export class PunishmentChainManager {
     return { chain, events };
   }
 
-  /**
-   * Handle A♠ played
-   */
   private static handleAceSpade(
     chain: GameState['punishmentChain'],
     config: RuleConfig,
@@ -62,9 +65,6 @@ export class PunishmentChainManager {
     return { chain, events };
   }
 
-  /**
-   * Handle 2 played on active chain
-   */
   private static handleRank2OnActiveChain(
     chain: GameState['punishmentChain'],
     config: RuleConfig,
@@ -81,9 +81,6 @@ export class PunishmentChainManager {
     return { chain, events };
   }
 
-  /**
-   * Handle 2 starting new chain
-   */
   private static handleRank2StartChain(
     chain: GameState['punishmentChain'],
     config: RuleConfig,
@@ -101,9 +98,6 @@ export class PunishmentChainManager {
     return { chain, events };
   }
 
-  /**
-   * Handle chain ending
-   */
   private static handleChainEnd(
     chain: GameState['punishmentChain'],
     events: GameEvent[]
@@ -116,14 +110,14 @@ export class PunishmentChainManager {
   }
 
   /**
-   * Take punishment cards
+   * Take punishment cards and emit authoritative actual drawn count
    */
   static takePunishment(
     state: GameState,
     playerId: string
   ): { updatedState: GameState; events: GameEvent[] } {
     const events: GameEvent[] = [];
-    const player = state.players.find(p => p.id === playerId);
+    const player = state.players.find((p) => p.id === playerId);
 
     if (!player) {
       throw new Error('Player not found');
@@ -132,18 +126,19 @@ export class PunishmentChainManager {
     const amount = state.punishmentChain.amount;
     const drawnCards = CardService.drawCards(state, amount);
     player.cards.push(...drawnCards);
+    const actualDrawn = drawnCards.length;
 
     events.push({
       type: 'cards_drawn',
-      playerId: playerId,
-      amount: amount,
+      playerId,
+      amount: actualDrawn,
     });
 
     events.push({
       type: 'punishment-taken',
       payload: {
-        playerId: playerId,
-        amount: amount,
+        playerId,
+        amount: actualDrawn,
       },
     });
 

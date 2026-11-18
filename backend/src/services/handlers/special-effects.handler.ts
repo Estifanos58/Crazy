@@ -1,4 +1,6 @@
-import type { GameState, RuleConfig, Card, GameEvent, Suit } from '../../types/game.types';
+import type { Card, GameEvent, GameState, RuleConfig, Suit } from '../../types/game.types';
+import { matchesAnyCardSelector } from '../../utils/card-selector';
+import { GameStateManager } from '../managers/game-state.manager';
 
 /**
  * SpecialEffectsHandler - Handles special card effects
@@ -13,26 +15,40 @@ export class SpecialEffectsHandler {
     card: Card,
     config: RuleConfig,
     chosenSuit?: Suit,
-    multipleCards: boolean = false,
-    playerId?: string
-  ): { events: GameEvent[]; stateChanges: Partial<GameState>; isReverse: boolean; isSkip: boolean } {
+    multipleCards = false,
+    playerId?: string,
+    activePlayerCountBeforeFinish?: number
+  ): {
+    events: GameEvent[];
+    stateChanges: Partial<GameState>;
+    isReverse: boolean;
+    isSkip: boolean;
+    reverseActsAsSkip: boolean;
+  } {
     const events: GameEvent[] = [];
     const stateChanges: Partial<GameState> = {};
     let isReverse = false;
     let isSkip = false;
+    let reverseActsAsSkip = false;
+
+    const actingPlayerId = playerId || state.currentTurn;
+    const activeCount =
+      activePlayerCountBeforeFinish ??
+      state.players.filter((p) => p.cards.length > 0 || p.id === actingPlayerId).length;
 
     // When multiple cards are played, reverse and skip effects should NOT trigger
     if (!multipleCards) {
       // Check and apply reverse
-      const reverseEffect = this.checkReverse(card, state, config);
+      const reverseEffect = this.checkReverse(card, state, config, actingPlayerId, activeCount);
       if (reverseEffect) {
-        events.push(reverseEffect.event);
+        events.push(...reverseEffect.events);
         Object.assign(stateChanges, reverseEffect.stateChanges);
         isReverse = true;
+        reverseActsAsSkip = reverseEffect.actsAsSkip;
       }
 
       // Check and apply skip
-      const skipEffect = this.checkSkip(card, state, config);
+      const skipEffect = this.checkSkip(card, state, config, actingPlayerId);
       if (skipEffect) {
         events.push(skipEffect.event);
         Object.assign(stateChanges, skipEffect.stateChanges);
@@ -41,44 +57,59 @@ export class SpecialEffectsHandler {
     }
 
     // Check and apply suit change (with consecutive tracking)
-    const suitChangeEffect = this.checkSuitChange(card, config, chosenSuit, state, playerId);
+    const suitChangeEffect = this.checkSuitChange(card, config, chosenSuit, state, actingPlayerId);
     if (suitChangeEffect) {
       events.push(suitChangeEffect.event);
       Object.assign(stateChanges, suitChangeEffect.stateChanges);
+    } else {
+      // Clear consecutive suit-change tracker when a non-suit-change card is played
+      stateChanges.lastSuitChangedBy = undefined;
     }
 
-    return { events, stateChanges, isReverse, isSkip };
+    return { events, stateChanges, isReverse, isSkip, reverseActsAsSkip };
   }
 
   /**
-   * Check and handle reverse effect
-   * Per rules: Reverse changes direction, and the previous player (in old direction) continues
+   * Check and handle reverse effect.
+   * Per rules:
+   * - In 3+ player games: reverses turn direction; next turn goes to previous active player.
+   * - In 2-player games: reverses direction AND acts as a skip (acting player goes again).
    */
   private static checkReverse(
     card: Card,
     state: GameState,
-    config: RuleConfig
-  ): { event: GameEvent; stateChanges: Partial<GameState> } | null {
-    const isReverse = config.specialCards.reverseCards.some(rc =>
-      rc.rank === card.rank 
-    );
-
+    config: RuleConfig,
+    actingPlayerId: string,
+    activePlayerCount: number
+  ): { events: GameEvent[]; stateChanges: Partial<GameState>; actsAsSkip: boolean } | null {
+    const isReverse = matchesAnyCardSelector(card, config.specialCards.reverseCards);
     if (!isReverse) return null;
 
     const newDirection = state.turnDirection === 'clockwise' ? 'counterclockwise' : 'clockwise';
-    // Get the previous player in the OLD direction (before reversing)
-    const previousPlayer = this.getPreviousPlayerInDirection(state, state.turnDirection);
-
-    return {
-      event: {
+    const events: GameEvent[] = [
+      {
         type: 'turn-reversed',
         payload: { direction: newDirection },
       },
+    ];
+
+    const actsAsSkip = activePlayerCount === 2;
+    if (actsAsSkip) {
+      const skippedPlayerId = GameStateManager.getNextActivePlayerFrom(state, actingPlayerId, 1);
+      if (skippedPlayerId && skippedPlayerId !== actingPlayerId) {
+        events.push({
+          type: 'player-skipped',
+          payload: { playerId: skippedPlayerId },
+        });
+      }
+    }
+
+    return {
+      events,
       stateChanges: {
         turnDirection: newDirection,
-        // Set turn to the previous player (who becomes the next player after reversal)
-        currentTurn: previousPlayer,
       },
+      actsAsSkip,
     };
   }
 
@@ -88,31 +119,27 @@ export class SpecialEffectsHandler {
   private static checkSkip(
     card: Card,
     state: GameState,
-    config: RuleConfig
+    config: RuleConfig,
+    actingPlayerId: string
   ): { event: GameEvent; stateChanges: Partial<GameState> } | null {
-    const isSkip = config.specialCards.skipCards.some(sc =>
-      sc.rank === card.rank 
-    );
-
+    const isSkip = matchesAnyCardSelector(card, config.specialCards.skipCards);
     if (!isSkip) return null;
 
-    const nextPlayerId = this.getNextPlayer(state);
+    const skippedPlayerId = GameStateManager.getNextActivePlayerFrom(state, actingPlayerId, 1);
 
     return {
       event: {
         type: 'player-skipped',
-        payload: { playerId: nextPlayerId },
+        payload: { playerId: skippedPlayerId },
       },
-      stateChanges: {
-        // Skip will be handled by advancing turn twice
-      },
+      stateChanges: {},
     };
   }
 
   /**
-   * Check and handle suit change effect
+   * Check and handle suit change effect.
    * Rule: If player A changes suit, player B (next) cannot change suit,
-   * but player C (third) can change suit again
+   * but player C (third) can change suit again.
    */
   private static checkSuitChange(
     card: Card,
@@ -121,38 +148,35 @@ export class SpecialEffectsHandler {
     state?: GameState,
     playerId?: string
   ): { event: GameEvent; stateChanges: Partial<GameState> } | null {
-    const isSuitChange = config.specialCards.suitChangeCards.some(sc =>
-      sc.rank === card.rank
-    );
-
+    const isSuitChange = matchesAnyCardSelector(card, config.specialCards.suitChangeCards);
     if (!isSuitChange || !chosenSuit) return null;
 
     // Check if the previous player changed the suit (consecutive suit change)
     if (state && playerId && state.lastSuitChangedBy) {
-      // Find the player before the current playerId
-      const playerIndex = state.players.findIndex(p => p.id === playerId);
+      const playerIndex = state.players.findIndex((p) => p.id === playerId);
       if (playerIndex !== -1) {
         const directionModifier = state.turnDirection === 'clockwise' ? -1 : 1;
-        const prevIndex = (playerIndex + directionModifier + state.players.length) % state.players.length;
+        const prevIndex =
+          (playerIndex + directionModifier + state.players.length) % state.players.length;
         const previousPlayer = state.players[prevIndex].id;
-        
-        // If the last suit changer was the previous player, current player cannot change suit
+
         if (state.lastSuitChangedBy === previousPlayer) {
           // Second consecutive player - suit change is blocked
           return {
             event: {
               type: 'suit-changed',
-              payload: { suit: card.suit }, // Use card's natural suit
+              payload: { suit: card.suit },
             },
             stateChanges: {
-              currentSuit: card.suit, // Keep the card's suit, don't apply chosen suit
+              currentSuit: card.suit,
+              lastSuitChangedBy: undefined,
             },
           };
         }
       }
     }
 
-    // Normal suit change (first player or third+ player)
+    // Normal suit change
     return {
       event: {
         type: 'suit-changed',
@@ -160,35 +184,8 @@ export class SpecialEffectsHandler {
       },
       stateChanges: {
         currentSuit: chosenSuit,
-        lastSuitChangedBy: playerId, // Track who changed the suit
+        lastSuitChangedBy: playerId,
       },
     };
-  }
-
-  /**
-   * Get next player in turn order
-   */
-  private static getNextPlayer(state: GameState): string {
-    const currentIndex = state.players.findIndex(p => p.id === state.currentTurn);
-    if (currentIndex === -1) return state.players[0].id;
-
-    const direction = state.turnDirection === 'clockwise' ? 1 : -1;
-    const nextIndex = (currentIndex + direction + state.players.length) % state.players.length;
-    
-    return state.players[nextIndex].id;
-  }
-
-  /**
-   * Get previous player in a specific direction
-   */
-  private static getPreviousPlayerInDirection(state: GameState, direction: 'clockwise' | 'counterclockwise'): string {
-    const currentIndex = state.players.findIndex(p => p.id === state.currentTurn);
-    if (currentIndex === -1) return state.players[0].id;
-
-    // Previous is opposite of the given direction
-    const directionModifier = direction === 'clockwise' ? -1 : 1;
-    const prevIndex = (currentIndex + directionModifier + state.players.length) % state.players.length;
-    
-    return state.players[prevIndex].id;
   }
 }

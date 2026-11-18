@@ -1,12 +1,31 @@
-import { customAlphabet } from 'nanoid';
+import crypto from 'node:crypto';
 import redisService from '../config/redis';
-import type { GameRoom, ServerPlayer, Player, JoinRoomData, StartGameData, RankedPlayer } from '../types/game.types';
+import type {
+  GameRoom,
+  JoinRoomData,
+  Player,
+  RankedPlayer,
+  ServerPlayer,
+  StartGameData,
+} from '../types/game.types';
 import { CardService } from './card.service';
 import { RuleService } from './rule.service';
+import { RoomLockService } from './lock.service';
+import { SessionAuthService } from './session-auth.service';
+import { GameBroadcaster } from './game-broadcaster.service';
+import { RulePresets, RuleValidator } from '../utils/rule-builder';
 
-const nanoidRoom = customAlphabet('0123456789', 6);
-const nanoidPlayer = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 12);
-const nanoidToken = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', 24);
+function generateRoomId(): string {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+function generatePlayerId(): string {
+  return `p_${crypto.randomBytes(9).toString('hex')}`;
+}
+
+function generatePlayerToken(): string {
+  return crypto.randomBytes(24).toString('base64url');
+}
 
 export interface JoinRoomResult {
   room: GameRoom;
@@ -17,18 +36,30 @@ export interface JoinRoomResult {
 export class RoomService {
   private static ROOM_PREFIX = 'room:';
   private static ROOM_EXPIRY = 3600 * 4; // 4 hours
+  private static MAX_PLAYERS = 8;
 
-  static async createRoom(creatorSocketId: string, username: string, avatar: string): Promise<JoinRoomResult> {
-    const roomId = nanoidRoom();
-    const playerId = `p_${nanoidPlayer()}`;
-    const playerToken = nanoidToken();
-    
+  static async createRoom(
+    creatorSocketId: string,
+    username: string,
+    avatar: string
+  ): Promise<JoinRoomResult> {
+    let roomId = generateRoomId();
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const taken = await this.roomExists(roomId);
+      if (!taken) break;
+      roomId = generateRoomId();
+    }
+
+    const playerId = generatePlayerId();
+    const playerToken = generatePlayerToken();
+    const cleanUsername = username.trim();
+
     const creator: ServerPlayer = {
       id: playerId,
       token: playerToken,
       socketId: creatorSocketId,
-      username,
-      avatar,
+      username: cleanUsername,
+      avatar: avatar.trim(),
       cards: [],
       isCreator: true,
       connected: true,
@@ -40,6 +71,7 @@ export class RoomService {
       players: [creator],
       finishedPlayers: [],
       gameStarted: false,
+      gameOver: false,
       deck: [],
       createdAt: Date.now(),
     };
@@ -48,81 +80,190 @@ export class RoomService {
     return { room, playerId, playerToken };
   }
 
+  /**
+   * Public locked joinRoom
+   */
   static async joinRoom(socketId: string, data: JoinRoomData): Promise<JoinRoomResult | null> {
+    return await RoomLockService.runWithLock(data.roomId, async () => {
+      return await this.joinRoomUnlocked(socketId, data);
+    });
+  }
+
+  /**
+   * Internal unlocked joinRoom (caller MUST hold room lock)
+   */
+  static async joinRoomUnlocked(
+    socketId: string,
+    data: JoinRoomData
+  ): Promise<JoinRoomResult | null> {
     const room = await this.getRoom(data.roomId);
-    
+
     if (!room) {
       return null;
     }
 
-    if (room.gameStarted) {
+    // Lifecycle check: joining is only allowed in lobby state
+    if (room.gameStarted || room.gameOver) {
       throw new Error('Game already started');
     }
 
     // Check if player with same socket already in room
-    const existing = room.players.find(p => p.socketId === socketId);
+    const existing = room.players.find((p) => p.socketId === socketId);
     if (existing) {
       return { room, playerId: existing.id, playerToken: existing.token };
     }
 
-    // Check duplicate username in room
+    if (room.players.length >= this.MAX_PLAYERS) {
+      throw new Error(`Room is full (maximum ${this.MAX_PLAYERS} players)`);
+    }
+
+    const cleanUsername = data.username.trim();
     const usernameTaken = room.players.some(
-      p => p.username.toLowerCase() === data.username.trim().toLowerCase()
+      (p) => p.username.toLowerCase() === cleanUsername.toLowerCase()
     );
     if (usernameTaken) {
       throw new Error('Username already taken in this room');
     }
 
-    const playerId = `p_${nanoidPlayer()}`;
-    const playerToken = nanoidToken();
+    const playerId = generatePlayerId();
+    const playerToken = generatePlayerToken();
 
     const newPlayer: ServerPlayer = {
       id: playerId,
       token: playerToken,
       socketId,
-      username: data.username.trim(),
-      avatar: data.avatar,
+      username: cleanUsername,
+      avatar: data.avatar.trim(),
       cards: [],
       isCreator: false,
       connected: true,
     };
-    
+
     room.players.push(newPlayer);
     await this.saveRoom(room);
 
     return { room, playerId, playerToken };
   }
 
+  /**
+   * Public locked startGame with full host authorization and lifecycle validation
+   */
+  static async startGameAuthorized(
+    socketId: string,
+    data: StartGameData & { playerId?: string; playerToken?: string }
+  ): Promise<{ room: GameRoom; starter: ServerPlayer }> {
+    return await RoomLockService.runWithLock(data.roomId, async () => {
+      const room = await this.getRoom(data.roomId);
+      if (!room) {
+        throw new Error('Room not found');
+      }
+
+      const player = SessionAuthService.authenticatePlayer(
+        room,
+        socketId,
+        data.playerId,
+        data.playerToken
+      );
+      if (!player) {
+        throw new Error('Unauthorized');
+      }
+
+      if (room.creatorId !== player.id) {
+        throw new Error('Only room creator can start game');
+      }
+
+      if (room.gameStarted) {
+        throw new Error('Game already started');
+      }
+
+      if (room.gameOver) {
+        throw new Error('Game has finished; use play-again to start a new round');
+      }
+
+      if (room.players.length < 2) {
+        throw new Error('At least 2 players are required to start the game');
+      }
+
+      const started = await this.startGameUnlocked(room, data);
+      return { room: started, starter: player };
+    });
+  }
+
+  /**
+   * Backwards-compatible locked startGame
+   */
   static async startGame(data: StartGameData): Promise<GameRoom | null> {
-    const room = await this.getRoom(data.roomId);
-    
-    if (!room) {
-      return null;
+    return await RoomLockService.runWithLock(data.roomId, async () => {
+      const room = await this.getRoom(data.roomId);
+      if (!room) {
+        return null;
+      }
+      if (room.gameStarted && !room.gameOver) {
+        throw new Error('Game already started');
+      }
+      if (room.players.length < 2) {
+        throw new Error('At least 2 players are required to start the game');
+      }
+      return await this.startGameUnlocked(room, data);
+    });
+  }
+
+  /**
+   * Internal unlocked startGame (caller MUST hold room lock)
+   */
+  static async startGameUnlocked(room: GameRoom, data: StartGameData): Promise<GameRoom> {
+    if (room.players.length < 2) {
+      throw new Error('At least 2 players are required to start the game');
     }
 
-    if (room.gameStarted && !room.gameOver) {
-      throw new Error('Game already started');
+    const cardsCount = Math.floor(data.cardsPerPlayer || 7);
+    if (cardsCount < 1 || cardsCount > 15) {
+      throw new Error('Cards per player must be between 1 and 15');
     }
 
-    // Deal cards
+    const requiredCards = cardsCount * room.players.length + 1;
+    if (requiredCards > 52) {
+      const maxForPlayerCount = Math.floor(51 / room.players.length);
+      throw new Error(
+        `Too many cards requested for ${room.players.length} players (maximum ${maxForPlayerCount} cards per player)`
+      );
+    }
+
+    if (data.ruleConfig) {
+      const validation = RuleValidator.validate(data.ruleConfig);
+      if (!validation.valid) {
+        throw new Error(`Invalid custom rules: ${validation.errors[0]}`);
+      }
+    }
+
+    const presetConfig = data.rulePreset ? RulePresets.getByName(data.rulePreset) : undefined;
+    const baseConfig = RuleService.mergeConfig(presetConfig);
+    const ruleConfig = data.ruleConfig
+      ? {
+          punishment: { ...baseConfig.punishment, ...data.ruleConfig.punishment },
+          specialCards: { ...baseConfig.specialCards, ...data.ruleConfig.specialCards },
+          crazyChallenge: { ...baseConfig.crazyChallenge, ...data.ruleConfig.crazyChallenge },
+          illegalTurnPenalty: data.ruleConfig.illegalTurnPenalty ?? baseConfig.illegalTurnPenalty,
+          allowDropAllSameSuit:
+            data.ruleConfig.allowDropAllSameSuit ?? baseConfig.allowDropAllSameSuit,
+          winOnEmpty: data.ruleConfig.winOnEmpty ?? baseConfig.winOnEmpty,
+        }
+      : baseConfig;
+
     const deck = CardService.createDeck();
     const shuffledDeck = CardService.shuffleDeck(deck);
 
-    const cardsCount = Math.max(1, Math.min(15, data.cardsPerPlayer || 7));
     const { playerHands, remainingDeck } = CardService.dealCards(
       shuffledDeck,
       room.players.length,
       cardsCount
     );
 
-    // Assign cards to players
     room.players.forEach((player, index) => {
       player.cards = playerHands[index] || [];
       player.rank = undefined;
       player.finishedAt = undefined;
     });
-
-    const ruleConfig = RuleService.mergeConfig(data.ruleConfig);
 
     room.gameStarted = true;
     room.gameOver = false;
@@ -143,6 +284,7 @@ export class RoomService {
     room.rules = {
       cardsPerPlayer: cardsCount,
       customRules: data.customRules,
+      rulePreset: data.rulePreset,
     };
     room.ruleConfig = ruleConfig;
 
@@ -178,7 +320,8 @@ export class RoomService {
   }
 
   /**
-   * Rejoin room securely with credentials or fallback
+   * Rejoin room securely using valid persistent credentials (playerId + playerToken).
+   * NEVER allows username-based takeover of an existing player in lobby, active, or finished games!
    */
   static async rejoinRoom(
     socketId: string,
@@ -188,66 +331,81 @@ export class RoomService {
     username?: string,
     avatar?: string
   ): Promise<{ room: GameRoom; player: ServerPlayer; playerId: string; playerToken: string } | null> {
-    const room = await this.getRoom(roomId);
-    if (!room) return null;
+    return await RoomLockService.runWithLock(roomId, async () => {
+      const room = await this.getRoom(roomId);
+      if (!room) return null;
 
-    let targetPlayer: ServerPlayer | undefined;
+      // 1. If credentials are provided, strictly authenticate via persistent playerId + timing-safe playerToken
+      if (playerId || playerToken) {
+        if (!playerId || !playerToken) {
+          throw new Error('Invalid player session credentials');
+        }
 
-    // 1. Try finding by persistent playerId and playerToken (secure reconnection)
-    if (playerId && playerToken) {
-      targetPlayer = room.players.find(p => p.id === playerId && p.token === playerToken);
-      if (!targetPlayer && room.finishedPlayers) {
-        targetPlayer = room.finishedPlayers.find(p => p.id === playerId && p.token === playerToken);
+        const targetPlayer = SessionAuthService.findPlayerByCredentials(room, playerId, playerToken);
+        if (!targetPlayer) {
+          throw new Error('Invalid player session credentials');
+        }
+
+        targetPlayer.socketId = socketId;
+        targetPlayer.connected = true;
+
+        await this.saveRoom(room);
+        return {
+          room,
+          player: targetPlayer,
+          playerId: targetPlayer.id,
+          playerToken: targetPlayer.token,
+        };
       }
-    }
 
-    // 2. Legacy fallback: find by username if game hasn't started or if token not provided
-    if (!targetPlayer && username) {
-      targetPlayer = room.players.find(p => p.username === username);
-      if (!targetPlayer && room.finishedPlayers) {
-        targetPlayer = room.finishedPlayers.find(p => p.username === username);
+      // 2. Without credentials: NEVER hijack existing players by username!
+      // Only permit joining as a brand-new player if room is still in lobby state.
+      if (!room.gameStarted && !room.gameOver && username && avatar) {
+        const joinResult = await this.joinRoomUnlocked(socketId, { roomId, username, avatar });
+        if (!joinResult) return null;
+        const joinedPlayer = joinResult.room.players.find((p) => p.id === joinResult.playerId)!;
+        return {
+          room: joinResult.room,
+          player: joinedPlayer,
+          playerId: joinResult.playerId,
+          playerToken: joinResult.playerToken,
+        };
       }
-    }
 
-    if (targetPlayer) {
-      // Update socket ID and connection status
-      targetPlayer.socketId = socketId;
-      targetPlayer.connected = true;
-
-      await this.saveRoom(room);
-      return {
-        room,
-        player: targetPlayer,
-        playerId: targetPlayer.id,
-        playerToken: targetPlayer.token,
-      };
-    }
-
-    // 3. If game has not started, allow new join
-    if (!room.gameStarted && username && avatar) {
-      const joinResult = await this.joinRoom(socketId, { roomId, username, avatar });
-      if (!joinResult) return null;
-      const joinedPlayer = joinResult.room.players.find(p => p.id === joinResult.playerId)!;
-      return {
-        room: joinResult.room,
-        player: joinedPlayer,
-        playerId: joinResult.playerId,
-        playerToken: joinResult.playerToken,
-      };
-    }
-
-    throw new Error('Cannot join game in progress without valid player session');
+      throw new Error('Valid player credentials are required to reconnect');
+    });
   }
 
   /**
-   * Reset game state and restore finished players into room.players
+   * Mark a player as disconnected under room lock (preserving their state for reconnection).
    */
-  static async resetGame(room: GameRoom): Promise<GameRoom> {
-    // Recombine active and finished players
-    const allPlayers: ServerPlayer[] = [
-      ...room.players,
-      ...(room.finishedPlayers || []),
-    ];
+  static async markPlayerDisconnected(
+    roomId: string,
+    socketId: string,
+    playerId?: string
+  ): Promise<GameRoom | null> {
+    return await RoomLockService.runWithLock(roomId, async () => {
+      const room = await this.getRoom(roomId);
+      if (!room) return null;
+
+      const allPlayers = [...room.players, ...(room.finishedPlayers || [])];
+      const player = allPlayers.find(
+        (p) => (playerId && p.id === playerId && p.socketId === socketId) || p.socketId === socketId
+      );
+
+      if (!player) return null;
+
+      player.connected = false;
+      await this.saveRoom(room);
+      return room;
+    });
+  }
+
+  /**
+   * Reset game state and restore finished players into room.players (caller MUST hold room lock).
+   */
+  static async resetGameUnlocked(room: GameRoom): Promise<GameRoom> {
+    const allPlayers: ServerPlayer[] = [...room.players, ...(room.finishedPlayers || [])];
 
     const resetRoom: GameRoom = {
       ...room,
@@ -267,7 +425,7 @@ export class RoomService {
       blunderState: undefined,
       lastSuitChangedBy: undefined,
       finishedPlayers: [],
-      players: allPlayers.map(player => ({
+      players: allPlayers.map((player) => ({
         ...player,
         cards: [],
         rank: undefined,
@@ -280,28 +438,20 @@ export class RoomService {
   }
 
   /**
-   * Sanitize room for public distribution (strip tokens and hidden cards)
+   * Locked resetGame helper
    */
+  static async resetGame(room: GameRoom): Promise<GameRoom> {
+    return await RoomLockService.runWithLock(room.roomId, async () => {
+      const latest = (await this.getRoom(room.roomId)) || room;
+      return await this.resetGameUnlocked(latest);
+    });
+  }
+
   static sanitizePlayers(players: ServerPlayer[]): Player[] {
-    return players.map(p => ({
-      id: p.id,
-      username: p.username,
-      avatar: p.avatar,
-      cardCount: p.cards.length,
-      isCreator: p.isCreator,
-      rank: p.rank,
-      finishedAt: p.finishedAt,
-      connected: p.connected,
-    }));
+    return GameBroadcaster.sanitizePlayers(players);
   }
 
   static sanitizeRankedPlayers(players: ServerPlayer[]): RankedPlayer[] {
-    return players.map(p => ({
-      id: p.id,
-      username: p.username,
-      avatar: p.avatar,
-      rank: p.rank || 0,
-      finishedAt: p.finishedAt,
-    }));
+    return GameBroadcaster.sanitizeRankedPlayers(players);
   }
 }

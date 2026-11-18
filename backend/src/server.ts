@@ -1,75 +1,136 @@
 import dotenv from 'dotenv';
 
-// IMPORTANT: Load environment variables FIRST before any other imports
+// Load environment variables FIRST before any other imports
 dotenv.config();
 
 import express from 'express';
 import { createServer } from 'http';
+import type { Server as HttpServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import redisService from './config/redis';
 import { SocketController } from './controllers/socket.controller';
+import { TimerService } from './services/timer.service';
+import { logger } from './utils/logger';
 
-const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-    methods: ['GET', 'POST'],
-    credentials: true,
-  },
-  pingTimeout: 60000, // 60 seconds
-  pingInterval: 25000, // 25 seconds
-  upgradeTimeout: 30000, // 30 seconds
-  maxHttpBufferSize: 1e8, // 100 MB
-  transports: ['websocket', 'polling'],
-  allowEIO3: true, // compatibility
-});
+function parseCorsOrigins(raw?: string): string | string[] {
+  const value = raw || 'http://localhost:3000';
+  const origins = value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  return origins.length <= 1 ? origins[0] || 'http://localhost:3000' : origins;
+}
 
-// Middleware
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-}));
-app.use(express.json());
+export function createAppServer(): { app: express.Express; httpServer: HttpServer; io: Server } {
+  const corsOrigin = parseCorsOrigins(process.env.CORS_ORIGIN);
 
-app.get('/', (req, res) => {
-  res.send('Welcome to the Card Game Server!');
-});
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+  const app = express();
+  app.disable('x-powered-by');
 
-// Setup Socket.IO handlers
-SocketController.setupSocketHandlers(io);
+  const httpServer = createServer(app);
+  const io = new Server(httpServer, {
+    cors: {
+      origin: corsOrigin,
+      methods: ['GET', 'POST'],
+      credentials: true,
+    },
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    upgradeTimeout: 30000,
+    maxHttpBufferSize: 1e5, // 100 KB cap for card game messages
+    transports: ['websocket', 'polling'],
+  });
 
-const PORT = process.env.PORT || 3001;
+  app.use(
+    cors({
+      origin: corsOrigin,
+      credentials: true,
+    })
+  );
+  app.use(express.json({ limit: '100kb' }));
 
-// Start server
-async function startServer() {
+  app.get('/', (_req, res) => {
+    res.json({ service: 'crazy-card-game-backend', status: 'running' });
+  });
+
+  // Liveness endpoint (process is alive)
+  const livenessHandler = (_req: express.Request, res: express.Response) => {
+    res.status(200).json({
+      status: 'ok',
+      uptimeSeconds: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+    });
+  };
+  app.get('/health', livenessHandler);
+  app.get('/health/live', livenessHandler);
+
+  // Readiness endpoint (verifies backing store connectivity)
+  app.get('/health/ready', async (_req, res) => {
+    const storeHealthy = await redisService.ping();
+    const mode = redisService.getMode();
+
+    if (!storeHealthy) {
+      res.status(503).json({
+        status: 'not_ready',
+        store: mode,
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    res.status(200).json({
+      status: 'ready',
+      store: mode,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  SocketController.setupSocketHandlers(io);
+
+  return { app, httpServer, io };
+}
+
+async function startServer(): Promise<void> {
+  const { httpServer, io } = createAppServer();
+  const port = Number(process.env.PORT || 3001);
+
   try {
-    // Connect to Redis
     await redisService.connect();
-    
-    // Start HTTP server
-    httpServer.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`🌐 CORS enabled for: ${process.env.CORS_ORIGIN || 'http://localhost:3000'}`);
+
+    httpServer.listen(port, () => {
+      logger.info('Server started', {
+        port,
+        corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+        storeMode: redisService.getMode(),
+      });
+    });
+
+    const shutdown = async (signal: string) => {
+      logger.info('Shutdown signal received', { signal });
+      TimerService.clearAllTimers();
+      io.close();
+      await redisService.disconnect();
+      httpServer.close(() => {
+        logger.info('HTTP server closed');
+        process.exit(0);
+      });
+    };
+
+    process.on('SIGTERM', () => {
+      void shutdown('SIGTERM');
+    });
+    process.on('SIGINT', () => {
+      void shutdown('SIGINT');
     });
   } catch (error) {
-    console.error('Failed to start server:', error);
+    logger.error('Failed to start server', {
+      error: error instanceof Error ? error : String(error),
+    });
     process.exit(1);
   }
 }
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully...');
-  await redisService.disconnect();
-  httpServer.close(() => {
-    console.log('Server closed');
-    process.exit(0);
-  });
-});
-
-startServer();
+if (require.main === module) {
+  void startServer();
+}

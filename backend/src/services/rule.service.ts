@@ -1,4 +1,4 @@
-import type { GameState, RuleConfig, Card, GameEvent, Suit } from '../types/game.types';
+import type { Card, GameEvent, GameState, RuleConfig, Suit } from '../types/game.types';
 import { MoveValidator } from './validators/move.validator';
 import { PunishmentChainManager } from './handlers/punishment.handler';
 import { SpecialEffectsHandler } from './handlers/special-effects.handler';
@@ -39,7 +39,7 @@ export class RuleService {
   }
 
   /**
-   * Merge custom rules with defaults
+   * Merge custom rules with defaults safely
    */
   static mergeConfig(customConfig?: Partial<RuleConfig>): RuleConfig {
     const defaults = this.getDefaultConfig();
@@ -58,7 +58,11 @@ export class RuleService {
   /**
    * Validate if a player can play cards
    */
-  static validateMove(gameState: GameState, playerId: string, cards: Card[]): {
+  static validateMove(
+    gameState: GameState,
+    playerId: string,
+    cards: Card[]
+  ): {
     valid: boolean;
     errors?: string[];
     canChallengeCrazy?: boolean;
@@ -75,18 +79,21 @@ export class RuleService {
     playerId: string,
     cards: Card[],
     chosenSuit?: Suit,
-    multipleCards: boolean = false
+    multipleCards = false
   ): { updatedState: GameState; events: GameEvent[] } {
     const config = this.mergeConfig(gameState.ruleConfig);
     const newState = GameStateManager.cloneState(gameState);
     const events: GameEvent[] = [];
 
+    // Capture active player count BEFORE removing played cards (needed for 2-player reverse rule)
+    const activePlayerCountBefore = newState.players.filter((p) => p.cards.length > 0).length;
+
     // Remove cards from player's hand
-    const player = newState.players.find(p => p.id === playerId);
+    const player = newState.players.find((p) => p.id === playerId);
     if (!player) throw new Error('Player not found');
 
     for (const card of cards) {
-      const cardIndex = player.cards.findIndex(c => c.id === card.id);
+      const cardIndex = player.cards.findIndex((c) => c.id === card.id);
       if (cardIndex !== -1) {
         player.cards.splice(cardIndex, 1);
       }
@@ -117,6 +124,7 @@ export class RuleService {
     // Track special effects for turn handling
     let isReverse = false;
     let isSkip = false;
+    let reverseActsAsSkip = false;
 
     // Apply special card effects (if not in punishment chain)
     if (!newState.punishmentChain.active) {
@@ -126,45 +134,48 @@ export class RuleService {
         config,
         chosenSuit,
         multipleCards,
-        playerId
+        playerId,
+        activePlayerCountBefore
       );
       events.push(...effectsResult.events);
       Object.assign(newState, effectsResult.stateChanges);
       isReverse = effectsResult.isReverse;
       isSkip = effectsResult.isSkip;
+      reverseActsAsSkip = effectsResult.reverseActsAsSkip;
+    } else {
+      newState.lastSuitChangedBy = undefined;
     }
 
     // Check if player finished (ran out of cards)
     const playerFinished = config.winOnEmpty && player.cards.length === 0;
-    
+
     if (playerFinished) {
       events.push({
         type: 'win',
         playerId,
         playerName: player.username,
       });
-      
-      const activePlayers = newState.players.filter(p => p.cards.length > 0);
+
+      const activePlayers = newState.players.filter((p) => p.cards.length > 0);
       if (activePlayers.length <= 1) {
         newState.gameEnded = true;
       }
     }
 
-    // Handle turn advancement based on special effects
+    // Handle turn advancement accurately for both continuing and finishing players
     if (!newState.gameEnded) {
-      if (isReverse) {
-        // Reverse card: previous player continues, direction and currentTurn already set
+      if (isReverse && reverseActsAsSkip) {
+        // 2-player reverse acts as a skip: skip opponent, land on acting player (if active)
+        newState.currentTurn = GameStateManager.getNextActivePlayerFrom(newState, playerId, 2);
+      } else if (isReverse) {
+        // 3+ player reverse: direction already flipped; advance 1 active step in new direction
+        newState.currentTurn = GameStateManager.getNextActivePlayerFrom(newState, playerId, 1);
       } else if (isSkip) {
-        // Skip card (7): skip the next player, land on the player after
-        GameStateManager.skipAndAdvanceTurn(newState);
+        // Skip card: skip next active player, land on the active player after them
+        newState.currentTurn = GameStateManager.getNextActivePlayerFrom(newState, playerId, 2);
       } else {
-        // Normal turn advancement
-        GameStateManager.advanceTurn(newState);
-      }
-      
-      // If current player has finished, advance to next active player
-      if (playerFinished) {
-        newState.currentTurn = GameStateManager.getNextActivePlayer(newState);
+        // Normal turn advancement: next active player in current direction
+        newState.currentTurn = GameStateManager.getNextActivePlayerFrom(newState, playerId, 1);
       }
     }
 
@@ -180,7 +191,7 @@ export class RuleService {
   ): { updatedState: GameState; events: GameEvent[] } {
     const newState = GameStateManager.cloneState(gameState);
     const result = PunishmentChainManager.takePunishment(newState, playerId);
-    
+
     GameStateManager.advanceTurn(result.updatedState);
 
     return result;
@@ -206,8 +217,8 @@ export class RuleService {
   ): { updatedState: GameState; events: GameEvent[] } {
     const newState = GameStateManager.cloneState(gameState);
     const events: GameEvent[] = [];
-    
-    const player = newState.players.find(p => p.id === playerId);
+
+    const player = newState.players.find((p) => p.id === playerId);
     if (!player) {
       throw new Error('Player not found');
     }
@@ -217,7 +228,7 @@ export class RuleService {
       player.cards.push(...drawnCards);
       events.push({
         type: 'cards_drawn',
-        playerId: playerId,
+        playerId,
         amount: drawnCards.length,
       });
     }
@@ -237,8 +248,8 @@ export class RuleService {
   ): { updatedState: GameState; events: GameEvent[] } {
     const newState = GameStateManager.cloneState(gameState);
     const events: GameEvent[] = [];
-    
-    const player = newState.players.find(p => p.id === playerId);
+
+    const player = newState.players.find((p) => p.id === playerId);
     if (!player) {
       throw new Error('Player not found');
     }
@@ -248,7 +259,7 @@ export class RuleService {
       player.cards.push(...drawnCards);
       events.push({
         type: 'cards_drawn',
-        playerId: playerId,
+        playerId,
         amount: drawnCards.length,
       });
     }
@@ -266,7 +277,7 @@ export class RuleService {
   ): { updatedState: GameState; events: GameEvent[] } {
     const config = this.mergeConfig(gameState.ruleConfig);
     const newState = GameStateManager.cloneState(gameState);
-    
+
     return CrazyChallengeHandler.applyIllegalTurnPenalty(
       newState,
       playerId,
@@ -285,7 +296,7 @@ export class RuleService {
   ): { updatedState: GameState; events: GameEvent[] } {
     const config = this.mergeConfig(gameState.ruleConfig);
     const newState = GameStateManager.cloneState(gameState);
-    
+
     return CrazyChallengeHandler.applyCrazyChallenge(
       newState,
       playerId,
@@ -299,13 +310,13 @@ export class RuleService {
    */
   static checkGameEnd(state: GameState): { ended: boolean; winner?: string } {
     const config = this.mergeConfig(state.ruleConfig);
-    
+
     if (!config.winOnEmpty) {
       return { ended: false };
     }
 
-    const playersWithCards = state.players.filter(p => p.cards.length > 0);
-    
+    const playersWithCards = state.players.filter((p) => p.cards.length > 0);
+
     if (playersWithCards.length === 0) {
       return { ended: true };
     }

@@ -1,62 +1,113 @@
+'use client';
+
 import React, { memo } from 'react';
-import type { Player } from '@/types/game.types';
 import { Crown, Users } from 'lucide-react';
+import type { Player } from '@/types/game.types';
 
 interface PlayerListProps {
   players: Player[];
   currentUserId?: string;
   currentTurn?: string | null;
+  showEmptySeats?: boolean;
+  minSeats?: number;
 }
 
-const PlayerList = memo(function PlayerList({ players, currentUserId, currentTurn }: PlayerListProps) {
+const PlayerList = memo(function PlayerList({
+  players,
+  currentUserId,
+  currentTurn,
+  showEmptySeats = false,
+  minSeats = 2,
+}: PlayerListProps) {
+  const emptySeatCount = showEmptySeats ? Math.max(0, minSeats - players.length) : 0;
+
   return (
-    <div className="space-y-2 sm:space-y-3">
-      <div className="flex items-center gap-2 text-cyber-primary mb-2 sm:mb-4">
-        <Users size={20} />
-        <h3 className="font-semibold tracking-wider uppercase text-sm sm:text-base">Players ({players.length})</h3>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-ivory-200">
+          <Users className="h-4 w-4 text-brass-400" aria-hidden="true" />
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-ivory-300">
+            Seated Players
+          </h3>
+        </div>
+        <span className="font-mono text-xs text-ivory-400">{players.length} / 8</span>
       </div>
-      
-      <div className="space-y-2">
-        {players.map((player) => (
-          <div
-            key={player.id}
-            className={`flex items-center justify-between p-2 sm:p-3 rounded-lg border transition-all duration-300 ${
-              player.id === currentTurn
-                ? 'bg-cyber-accent/20 border-cyber-accent shadow-[0_0_20px_rgba(255,0,85,0.3)] motion-safe:animate-pulse'
-                : player.id === currentUserId
-                ? 'bg-cyber-primary/20 border-cyber-primary shadow-[0_0_15px_rgba(0,243,255,0.2)]'
-                : 'bg-white/5 border-white/10 hover:bg-white/10'
-            }`}
-          >
-            <div className="flex items-center gap-2 sm:gap-3">
-              <span className="text-2xl sm:text-3xl filter drop-shadow-[0_0_5px_rgba(255,255,255,0.5)]">{player.avatar}</span>
-              <div>
-                <p className="font-medium text-white text-sm sm:text-base">
-                  {player.username}
-                  {player.id === currentUserId && (
-                    <span className="text-[10px] sm:text-xs text-cyber-primary ml-1 sm:ml-2 font-mono border border-cyber-primary/50 px-1 rounded">YOU</span>
-                  )}
-                  {player.id === currentTurn && (
-                    <span className="text-[10px] sm:text-xs text-cyber-accent ml-1 sm:ml-2 font-mono border border-cyber-accent/50 px-1 rounded motion-safe:animate-pulse">TURN</span>
-                  )}
-                </p>
-                {player.isCreator && (
-                  <div className="flex items-center gap-1 text-yellow-400 text-xs sm:text-sm drop-shadow-[0_0_5px_rgba(250,204,21,0.5)]">
-                    <Crown size={12} className="sm:w-[14px] sm:h-[14px]" />
-                    <span>HOST</span>
+
+      <ul className="space-y-2.5">
+        {players.map((player) => {
+          const isMe = Boolean(currentUserId && player.id === currentUserId);
+          const isTurn = Boolean(currentTurn && player.id === currentTurn);
+          const isOnline = player.connected !== false;
+
+          return (
+            <li
+              key={player.id}
+              className={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-3 transition-colors ${
+                isTurn
+                  ? 'border-brass-500 bg-brass-500/10'
+                  : isMe
+                  ? 'border-ivory-300/30 bg-parlor-elevated'
+                  : 'border-parlor-border bg-parlor-bg/50'
+              }`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-parlor-elevated border border-parlor-border text-xl">
+                  <span aria-hidden="true">{player.avatar}</span>
+                  <span
+                    title={isOnline ? 'Connected' : 'Reconnecting'}
+                    className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-parlor-surface ${
+                      isOnline ? 'bg-jade-400' : 'bg-ivory-500'
+                    }`}
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="truncate font-medium text-sm text-ivory-100">
+                      {player.username}
+                    </span>
+                    {isMe && (
+                      <span className="rounded-md bg-parlor-bg px-1.5 py-0.5 text-[11px] font-medium text-ivory-300 border border-parlor-border">
+                        You
+                      </span>
+                    )}
+                    {isTurn && (
+                      <span className="rounded-md bg-brass-500/20 px-1.5 py-0.5 text-[11px] font-semibold text-brass-300">
+                        Active Turn
+                      </span>
+                    )}
                   </div>
-                )}
+
+                  <div className="flex items-center gap-2 mt-0.5 text-xs text-ivory-400">
+                    {player.isCreator && (
+                      <span className="inline-flex items-center gap-1 text-brass-400 font-medium">
+                        <Crown className="h-3 w-3" aria-hidden="true" />
+                        Host
+                      </span>
+                    )}
+                    {!isOnline && <span className="text-ivory-500">Disconnected</span>}
+                  </div>
+                </div>
               </div>
-            </div>
-            
-            {player.cardCount > 0 && (
-              <div className="text-xs sm:text-sm font-mono text-cyber-secondary">
-                {player.cardCount} CARDS
-              </div>
-            )}
-          </div>
+
+              {player.cardCount > 0 && (
+                <span className="shrink-0 rounded-lg border border-parlor-border bg-parlor-bg px-2.5 py-1 font-mono text-xs font-medium text-ivory-200">
+                  {player.cardCount} {player.cardCount === 1 ? 'card' : 'cards'}
+                </span>
+              )}
+            </li>
+          );
+        })}
+
+        {Array.from({ length: emptySeatCount }).map((_, idx) => (
+          <li
+            key={`empty-${idx}`}
+            className="flex items-center justify-between rounded-xl border border-dashed border-parlor-border px-3.5 py-3 text-sm text-ivory-500"
+          >
+            <span>Open seat — share room code to invite a player</span>
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 });

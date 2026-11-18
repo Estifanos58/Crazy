@@ -1,112 +1,123 @@
-import React, { useState } from 'react';
+'use client';
 
-interface Avatar {
+import React, { useEffect, useState } from 'react';
+import { Loader2 } from 'lucide-react';
+
+interface AvatarOption {
   id: string;
   emoji: string;
   label: string;
 }
 
-const AVATARS: Avatar[] = [
-  { id: '1', emoji: '😀', label: 'Happy' },
-  { id: '2', emoji: '😎', label: 'Cool' },
-  { id: '3', emoji: '🤖', label: 'Robot' },
-  { id: '4', emoji: '👻', label: 'Ghost' },
-  { id: '5', emoji: '🦄', label: 'Unicorn' },
-  { id: '6', emoji: '🐶', label: 'Dog' },
+export const AVATARS: AvatarOption[] = [
+  { id: '1', emoji: '🦊', label: 'Fox' },
+  { id: '2', emoji: '🦉', label: 'Owl' },
+  { id: '3', emoji: '🦁', label: 'Lion' },
+  { id: '4', emoji: '🐻', label: 'Bear' },
+  { id: '5', emoji: '🐺', label: 'Wolf' },
+  { id: '6', emoji: '🦅', label: 'Eagle' },
   { id: '7', emoji: '🐱', label: 'Cat' },
-  { id: '8', emoji: '🦊', label: 'Fox' },
+  { id: '8', emoji: '🐶', label: 'Dog' },
   { id: '9', emoji: '🐼', label: 'Panda' },
   { id: '10', emoji: '🐯', label: 'Tiger' },
-  { id: '11', emoji: '🦁', label: 'Lion' },
-  { id: '12', emoji: '🐸', label: 'Frog' },
+  { id: '11', emoji: '🐸', label: 'Frog' },
+  { id: '12', emoji: '🐙', label: 'Octopus' },
 ];
 
 interface UserInfoModalProps {
   onSubmit: (username: string, avatar: string) => void;
+  submitLabel?: string;
   isJoining?: boolean;
   isLoading?: boolean;
   initialUsername?: string;
   initialAvatar?: string;
 }
 
-export default function UserInfoModal({ 
-  onSubmit, 
-  isJoining = false, 
+export default function UserInfoModal({
+  onSubmit,
+  submitLabel,
+  isJoining = false,
   isLoading = false,
   initialUsername = '',
-  initialAvatar = AVATARS[0].emoji
+  initialAvatar = AVATARS[0].emoji,
 }: UserInfoModalProps) {
   const [username, setUsername] = useState(initialUsername);
-  const [selectedAvatar, setSelectedAvatar] = useState(initialAvatar);
+  const [selectedAvatar, setSelectedAvatar] = useState(initialAvatar || AVATARS[0].emoji);
+
+  useEffect(() => {
+    setUsername(initialUsername);
+  }, [initialUsername]);
+
+  useEffect(() => {
+    if (initialAvatar) {
+      setSelectedAvatar(initialAvatar);
+    }
+  }, [initialAvatar]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username.trim() && !isLoading) {
-      onSubmit(username.trim(), selectedAvatar);
+    const trimmed = username.trim();
+    if (trimmed && !isLoading) {
+      onSubmit(trimmed, selectedAvatar);
     }
   };
 
+  const buttonText = submitLabel || (isJoining ? 'Join Room' : 'Create Room');
+
   return (
-    <div className="space-y-6">
-      <p className="text-gray-300">
-        {isJoining ? 'Join the game room' : 'Create a new game room'}
-      </p>
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div>
+        <label htmlFor="player-username" className="block text-sm font-medium text-ivory-200 mb-2">
+          Display Name
+        </label>
+        <input
+          type="text"
+          id="player-username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          className="input-field"
+          placeholder="Enter your name"
+          maxLength={24}
+          autoFocus
+          required
+        />
+        <p className="mt-1.5 text-xs text-ivory-500">Shown to other players seated at your table.</p>
+      </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label htmlFor="username" className="block text-sm font-medium text-cyber-primary mb-2">
-            USERNAME
-          </label>
-          <input
-            type="text"
-            id="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="w-full px-4 py-3 bg-cyber-black/50 border border-cyber-primary/30 rounded-lg text-white focus:ring-2 focus:ring-cyber-primary focus:border-transparent outline-none transition-all placeholder-gray-500"
-            placeholder="ENTER_CODENAME"
-            maxLength={20}
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-cyber-primary mb-3">
-            SELECT AVATAR
-          </label>
-          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 sm:gap-3">
-            {AVATARS.map((avatar) => (
+      <div>
+        <span className="block text-sm font-medium text-ivory-200 mb-2.5">Choose an Avatar</span>
+        <div className="grid grid-cols-6 gap-2" role="radiogroup" aria-label="Player avatar">
+          {AVATARS.map((avatar) => {
+            const isSelected = selectedAvatar === avatar.emoji;
+            return (
               <button
                 key={avatar.id}
                 type="button"
+                role="radio"
+                aria-checked={isSelected}
+                aria-label={avatar.label}
                 onClick={() => setSelectedAvatar(avatar.emoji)}
-                className={`text-4xl flex items-center justify-center p-3 rounded-lg transition-all hover:scale-110 ${
-                  selectedAvatar === avatar.emoji
-                    ? 'bg-cyber-primary/20 ring-2 ring-cyber-primary scale-110'
-                    : 'bg-cyber-black/30 hover:bg-cyber-primary/10'
+                className={`flex h-12 items-center justify-center rounded-xl border text-2xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400 ${
+                  isSelected
+                    ? 'border-brass-500 bg-brass-500/15'
+                    : 'border-parlor-border bg-parlor-bg hover:bg-parlor-elevated'
                 }`}
-                title={avatar.label}
               >
-                {avatar.emoji}
+                <span aria-hidden="true">{avatar.emoji}</span>
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
+      </div>
 
-        <button
-          type="submit"
-          className="w-full btn-primary flex items-center justify-center gap-2"
-          disabled={!username.trim() || isLoading}
-        >
-          {isLoading ? (
-            <>
-              <div className="animate-spin h-5 w-5 border-2 border-cyber-primary border-t-transparent rounded-full" />
-              <span>PROCESSING...</span>
-            </>
-          ) : (
-            <span>{isJoining ? 'JOIN GAME' : 'CREATE ROOM'}</span>
-          )}
-        </button>
-      </form>
-    </div>
+      <button
+        type="submit"
+        className="w-full btn-primary"
+        disabled={!username.trim() || isLoading}
+      >
+        {isLoading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+        <span>{isLoading ? 'Working…' : buttonText}</span>
+      </button>
+    </form>
   );
 }

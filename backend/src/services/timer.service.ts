@@ -1,8 +1,10 @@
+import { logger } from '../utils/logger';
+
 export class TimerService {
   private static activeTimers = new Map<string, NodeJS.Timeout>();
 
   /**
-   * Set a timer for a specific room action
+   * Set a timer for a specific room action.
    */
   static setTimer(key: string, delayMs: number, callback: () => void | Promise<void>): void {
     this.clearTimer(key);
@@ -12,15 +14,22 @@ export class TimerService {
       try {
         await callback();
       } catch (error) {
-        console.error(`Error in timer callback for ${key}:`, error);
+        logger.error('Error in timer callback', {
+          timerKey: key,
+          error: error instanceof Error ? error : String(error),
+        });
       }
     }, delayMs);
+
+    if (typeof timer.unref === 'function') {
+      timer.unref();
+    }
 
     this.activeTimers.set(key, timer);
   }
 
   /**
-   * Clear an active timer
+   * Clear an active timer.
    */
   static clearTimer(key: string): void {
     const existing = this.activeTimers.get(key);
@@ -31,15 +40,25 @@ export class TimerService {
   }
 
   /**
-   * Clear all timers for a room (e.g. on game end or room deletion)
+   * Clear all timers associated with a room.
    */
   static clearRoomTimers(roomId: string): void {
-    const prefix = `blunder:${roomId}`;
+    const suffix = `:${roomId}`;
     for (const [key, timer] of this.activeTimers.entries()) {
-      if (key.startsWith(prefix) || key.includes(roomId)) {
+      if (key.endsWith(suffix) || key.includes(`${suffix}:`)) {
         clearTimeout(timer);
         this.activeTimers.delete(key);
       }
     }
+  }
+
+  /**
+   * Clear all active timers (used on graceful shutdown or test cleanup).
+   */
+  static clearAllTimers(): void {
+    for (const timer of this.activeTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.activeTimers.clear();
   }
 }

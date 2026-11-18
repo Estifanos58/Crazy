@@ -1,338 +1,439 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Gamepad2, Users, Zap, Globe, Smartphone, BookOpen, User } from 'lucide-react';
-import { motion } from 'framer-motion';
+import {
+  AlertTriangle,
+  ArrowRight,
+  BookOpen,
+  Layers,
+  Loader2,
+  Plus,
+  Repeat2,
+  User,
+  Users,
+} from 'lucide-react';
+import { toast } from 'sonner';
 import Modal from '@/components/Modal';
 import UserInfoModal from '@/components/UserInfoModal';
 import JoinGameModal from '@/components/JoinGameModal';
+import CardComponent from '@/components/Card';
 import { useGameStore } from '@/lib/store';
-import Background from '@/components/Background';
-import HolographicCard from '@/components/HolographicCard';
-import FeatureCard from '@/components/FeatureCard';
+import { clearSessionFromStorage } from '@/lib/store/storage';
+import type { Card } from '@/types/game.types';
 
-export default function Home() {
+const SHOWCASE_CARDS: { card: Card; role: string; summary: string }[] = [
+  {
+    card: { id: 'showcase-5c', rank: '5', suit: 'clubs' },
+    role: 'Reverse',
+    summary: 'Flips turn order. In a 2-player match, acts as a Skip so you go again.',
+  },
+  {
+    card: { id: 'showcase-7h', rank: '7', suit: 'hearts' },
+    role: 'Skip & Multi-Drop',
+    summary: 'Skips the next player, or lets you shed multiple cards of the same suit at once.',
+  },
+  {
+    card: { id: 'showcase-as', rank: 'A', suit: 'spades' },
+    role: 'Ace of Spades (+5)',
+    summary: 'Starts or stacks a 5-card punishment chain. Counter only with the 2 of Spades.',
+  },
+  {
+    card: { id: 'showcase-jd', rank: 'J', suit: 'diamonds' },
+    role: 'Wild Suit Change',
+    summary: 'Play on any normal turn to declare a new active suit for the table.',
+  },
+  {
+    card: { id: 'showcase-2s', rank: '2', suit: 'spades' },
+    role: 'Punishment Stack (+2)',
+    summary: 'Forces the next player to draw 2 cards—or stack another matching 2 to raise the stakes.',
+  },
+];
+
+export default function HomePage() {
   const router = useRouter();
-  const [showGameSelect, setShowGameSelect] = useState(false);
-  const [showModeSelect, setShowModeSelect] = useState(false);
+  const { isConnected, setUserInfo, createRoom, joinRoom, resetRoomState, username, avatar } =
+    useGameStore();
+
   const [showUserInfo, setShowUserInfo] = useState(false);
-  const [showJoinGameModal, setShowJoinGameModal] = useState(false);
-  const [joinMode, setJoinMode] = useState<'create' | 'join'>('create');
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'create' | 'join' | 'profile'>('create');
   const [targetRoomId, setTargetRoomId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [activeShowcaseIdx, setActiveShowcaseIdx] = useState(2);
 
-  const { connect, setUserInfo, createRoom, joinRoom, username, avatar } = useGameStore();
+  const handleCreateTable = async () => {
+    clearSessionFromStorage();
+    resetRoomState();
 
-  const handlePlayClick = () => {
-    // Clear any previous game session
-    sessionStorage.removeItem('crazy-game-state');
-    setShowGameSelect(true);
-  };
-
-  const handleJoinClick = () => {
-    // Clear any previous game session
-    sessionStorage.removeItem('crazy-game-state');
-    setShowJoinGameModal(true);
-  };
-
-  const handleJoinSubmit = async (roomId: string) => {
-    setTargetRoomId(roomId);
-    setShowJoinGameModal(false);
-    setJoinMode('join');
-    setIsEditingProfile(false);
-    
-    if (username) {
-      setIsLoading(true);
-      try {
-        const result = await joinRoom(roomId);
-        if (result.success) {
-          router.push(`/room/${roomId}`);
-        } else {
-          alert('Failed to join room: ' + result.error);
-          setIsLoading(false);
-          setShowUserInfo(true); // Show modal on failure (e.g. name taken)
-        }
-      } catch (error) {
-        console.error(error);
-        setIsLoading(false);
-        setShowUserInfo(true);
-      }
-    } else {
+    if (!username.trim()) {
+      setPendingAction('create');
       setShowUserInfo(true);
-    }
-  };
-
-  const handleGameSelect = () => {
-    setShowGameSelect(false);
-    setShowModeSelect(true);
-  };
-
-  const handleModeSelect = async (mode: 'single' | 'multi') => {
-    if (mode === 'single') {
-      alert('Single player mode coming soon!');
-      return;
-    }
-    setJoinMode('create');
-    setShowModeSelect(false);
-    setIsEditingProfile(false);
-    
-    if (username) {
-      setIsLoading(true);
-      try {
-        const result = await createRoom();
-        if (result.success && result.roomId) {
-          router.push(`/room/${result.roomId}`);
-        } else {
-          alert('Failed to create room: ' + result.error);
-          setIsLoading(false);
-        }
-      } catch (error) {
-        console.error(error);
-        setIsLoading(false);
-      }
-    } else {
-      setShowUserInfo(true);
-    }
-  };
-
-  const handleUserInfoSubmit = async (username: string, avatar: string) => {
-    setUserInfo(username, avatar);
-    
-    if (isEditingProfile) {
-      setShowUserInfo(false);
       return;
     }
 
     setIsLoading(true);
-
-    try {
-      if (joinMode === 'create') {
-        const result = await createRoom();
-
-        if (result.success && result.roomId) {
-          router.push(`/room/${result.roomId}`);
-        } else {
-          alert('Failed to create room: ' + result.error);
-          setIsLoading(false);
-        }
-      } else if (joinMode === 'join' && targetRoomId) {
-        const result = await joinRoom(targetRoomId);
-
-        if (result.success) {
-          router.push(`/room/${targetRoomId}`);
-        } else {
-          alert('Failed to join room: ' + result.error);
-          setIsLoading(false);
-        }
-      }
-    } catch (error) {
-      console.error(error);
+    const result = await createRoom();
+    if (result.success && result.roomId) {
+      router.push(`/room/${result.roomId}`);
+    } else {
+      toast.error(result.error || 'Could not create room');
       setIsLoading(false);
     }
   };
 
+  const handleOpenJoin = () => {
+    clearSessionFromStorage();
+    resetRoomState();
+    setShowJoinModal(true);
+  };
+
+  const handleJoinCodeSubmit = async (roomId: string) => {
+    setTargetRoomId(roomId);
+    setShowJoinModal(false);
+
+    if (!username.trim()) {
+      setPendingAction('join');
+      setShowUserInfo(true);
+      return;
+    }
+
+    setIsLoading(true);
+    const result = await joinRoom(roomId);
+    if (result.success) {
+      router.push(`/room/${roomId}`);
+    } else {
+      toast.error(result.error || 'Could not join room');
+      setIsLoading(false);
+      setPendingAction('join');
+      setShowUserInfo(true);
+    }
+  };
+
+  const handleUserInfoSubmit = async (nextUsername: string, nextAvatar: string) => {
+    setUserInfo(nextUsername, nextAvatar);
+
+    if (pendingAction === 'profile') {
+      setShowUserInfo(false);
+      toast.success('Profile updated');
+      return;
+    }
+
+    setIsLoading(true);
+    if (pendingAction === 'create') {
+      const result = await createRoom();
+      if (result.success && result.roomId) {
+        setShowUserInfo(false);
+        router.push(`/room/${result.roomId}`);
+      } else {
+        toast.error(result.error || 'Could not create room');
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    if (pendingAction === 'join' && targetRoomId) {
+      const result = await joinRoom(targetRoomId);
+      if (result.success) {
+        setShowUserInfo(false);
+        router.push(`/room/${targetRoomId}`);
+      } else {
+        toast.error(result.error || 'Could not join room');
+        setIsLoading(false);
+      }
+    }
+  };
+
+  const activeShowcase = SHOWCASE_CARDS[activeShowcaseIdx];
+
   return (
-    <main className="min-h-screen relative overflow-hidden flex flex-col">
-      <Background />
+    <div className="min-h-screen flex flex-col bg-parlor-bg text-ivory-200">
+      {/* Top Navigation */}
+      <header className="border-b border-parlor-border bg-parlor-bg/95">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6 h-16">
+          <Link
+            href="/"
+            className="flex items-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400 rounded-lg"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-brass-500/50 bg-parlor-felt text-brass-400 font-display text-base">
+              ♠
+            </span>
+            <span className="font-display text-xl font-semibold tracking-tight text-ivory-100">
+              Crazy
+            </span>
+          </Link>
+
+          <nav className="flex items-center gap-2 sm:gap-3" aria-label="Primary navigation">
+            <Link href="/help" className="btn-ghost text-sm">
+              <BookOpen className="h-4 w-4 text-ivory-400" aria-hidden="true" />
+              <span>Rules</span>
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => {
+                setPendingAction('profile');
+                setShowUserInfo(true);
+              }}
+              className="btn-secondary py-2 px-3.5 text-xs sm:text-sm min-h-[38px]"
+            >
+              {avatar ? (
+                <span className="text-base leading-none" aria-hidden="true">
+                  {avatar}
+                </span>
+              ) : (
+                <User className="h-4 w-4 text-ivory-400" aria-hidden="true" />
+              )}
+              <span className="max-w-[110px] truncate">{username || 'Set Profile'}</span>
+            </button>
+          </nav>
+        </div>
+      </header>
 
       {/* Hero Section */}
-      <section className="relative z-10 flex-grow flex flex-col lg:flex-row items-center justify-center px-4 py-12 sm:py-20 lg:py-40 max-w-7xl mx-auto w-full gap-8 sm:gap-12 lg:gap-24">
+      <main className="flex-1">
+        <section className="mx-auto max-w-6xl px-4 sm:px-6 pt-12 pb-16 sm:pt-20 sm:pb-24">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-10 items-center">
+            {/* Editorial Copy & CTAs */}
+            <div className="lg:col-span-6 space-y-7">
+              <div className="inline-flex items-center gap-2 rounded-full border border-parlor-border bg-parlor-surface px-3.5 py-1.5 text-xs font-medium text-ivory-300">
+                <span
+                  className={`h-2 w-2 rounded-full ${isConnected ? 'bg-jade-400' : 'bg-ivory-500'}`}
+                  aria-hidden="true"
+                />
+                <span>Live Multiplayer Table • 2 to 8 Players</span>
+              </div>
 
-        {/* Text Content */}
-        <div className="flex-1 text-center lg:text-left space-y-8">
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-          >
-            <h1 className="text-4xl sm:text-6xl lg:text-8xl font-black flex flex-wrap justify-center lg:justify-start gap-2 sm:gap-4 tracking-tighter mb-4">
-              <span className="text-transparent px-2 sm:px-3 bg-clip-text bg-gradient-to-r from-cyber-primary via-white to-cyber-primary animate-pulse-glow">
-                CRAZY
-              </span>
-              {/* <br />  */}
-              <span className="text-white text-glow-purple">CARDS</span>
-            </h1>
-            <p className="text-base sm:text-xl lg:text-2xl text-gray-300 max-w-2xl mx-auto lg:mx-0 font-light tracking-wide">
-              The Future of Multiplayer Card Gaming is Here.
-              <span className="block text-cyber-primary mt-2 font-mono text-sm">
-                // SYSTEM.READY // WAITING_FOR_PLAYER
-              </span>
-            </p>
-          </motion.div>
+              <div className="space-y-4">
+                <h1 className="font-display text-4xl sm:text-5xl lg:text-[3.5rem] font-semibold leading-[1.08] text-ivory-50">
+                  Classic card play, sharp table tension.
+                </h1>
+                <p className="text-base sm:text-lg leading-relaxed text-ivory-400 max-w-xl">
+                  Empty your hand before the table catches you slipping. Stack draw penalties,
+                  reverse momentum, declare suits, and call <strong className="text-ivory-200 font-semibold">Crazy</strong> when an opponent blunders.
+                </p>
+              </div>
 
-          <div className="flex flex-col gap-4 w-full max-w-md lg:max-w-none items-center lg:items-start">
-            {/* Primary Action */}
-            <motion.button
-              onClick={handlePlayClick}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              transition={{ delay: 0.4 }}
-              className="btn-primary w-full sm:w-auto min-w-[280px] sm:min-w-[320px] text-xl sm:text-2xl px-8 py-5 sm:py-6 shadow-[0_0_30px_rgba(0,243,255,0.3)] font-black tracking-wider flex items-center justify-center gap-3"
-            >
-              <Gamepad2 className="w-6 h-6 sm:w-8 sm:h-8" />
-              INITIALIZE GAME
-            </motion.button>
+              <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={handleCreateTable}
+                  disabled={isLoading}
+                  className="btn-primary px-6 py-3.5 text-base"
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  <span>Create a Table</span>
+                </button>
 
-            {/* Secondary Action */}
-            <motion.button
-              onClick={handleJoinClick}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              transition={{ delay: 0.5 }}
-              className="btn-secondary w-full sm:w-auto min-w-[280px] sm:min-w-[320px] text-lg sm:text-xl px-8 py-4 sm:py-5 font-bold flex items-center justify-center gap-3"
-            >
-              <Users className="w-5 h-5 sm:w-6 sm:h-6" />
-              JOIN GAME
-            </motion.button>
+                <button
+                  type="button"
+                  onClick={handleOpenJoin}
+                  disabled={isLoading}
+                  className="btn-secondary px-6 py-3.5 text-base"
+                >
+                  <Users className="h-4 w-4 text-ivory-300" aria-hidden="true" />
+                  <span>Join with Code</span>
+                </button>
+              </div>
 
-            {/* Tertiary Actions */}
-            <div className="flex flex-row gap-3 w-full sm:w-auto min-w-[280px] sm:min-w-[320px]">
-              <motion.button
-                onClick={() => router.push('/help')}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.1)' }}
-                whileTap={{ scale: 0.95 }}
-                transition={{ delay: 0.6 }}
-                className="flex-1 px-4 py-3 rounded-lg border border-white/10 text-gray-300 hover:text-white hover:border-white/30 transition-all flex items-center justify-center gap-2 text-sm font-medium bg-black/20 backdrop-blur-sm"
-              >
-                <BookOpen size={18} />
-                <span>HOW TO PLAY</span>
-              </motion.button>
+              <div className="pt-2 flex items-center gap-6 text-sm text-ivory-400">
+                <Link
+                  href="/help"
+                  className="inline-flex items-center gap-1.5 font-medium text-brass-400 hover:text-brass-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400 rounded"
+                >
+                  <span>Learn the rules in 2 minutes</span>
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+              </div>
+            </div>
 
-              <motion.button
-                onClick={() => {
-                  setIsEditingProfile(true);
-                  setShowUserInfo(true);
-                }}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.1)' }}
-                whileTap={{ scale: 0.95 }}
-                transition={{ delay: 0.7 }}
-                className="flex-1 px-4 py-3 rounded-lg border border-white/10 text-gray-300 hover:text-white hover:border-white/30 transition-all flex items-center justify-center gap-2 text-sm font-medium bg-black/20 backdrop-blur-sm"
-              >
-                <User size={18} />
-                <span>PROFILE</span>
-              </motion.button>
+            {/* Tactile Felt Table Card Showcase */}
+            <div className="lg:col-span-6">
+              <div className="felt-table rounded-3xl border border-parlor-border p-6 sm:p-8">
+                <div className="flex items-center justify-between text-xs text-ivory-300/80 mb-6">
+                  <span className="uppercase tracking-widest font-medium">Signature Cards</span>
+                  <span className="font-mono text-ivory-300/70">Select a card to inspect</span>
+                </div>
+
+                {/* Fanned Playing Cards */}
+                <div className="flex items-end justify-center py-6 sm:py-8">
+                  {SHOWCASE_CARDS.map((item, idx) => {
+                    const isSelected = idx === activeShowcaseIdx;
+                    const rotationClasses = [
+                      '-rotate-6',
+                      '-rotate-3',
+                      'rotate-0',
+                      'rotate-3',
+                      'rotate-6',
+                    ][idx];
+                    return (
+                      <div
+                        key={item.card.id}
+                        className={`-ml-5 sm:-ml-6 first:ml-0 transition-transform duration-150 ${rotationClasses}`}
+                      >
+                        <CardComponent
+                          card={item.card}
+                          isSelected={isSelected}
+                          onClick={() => setActiveShowcaseIdx(idx)}
+                          size="md"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Selected Card Caption */}
+                <div className="mt-4 rounded-2xl border border-ivory-200/10 bg-parlor-bg/70 p-4 sm:p-5">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <h2 className="font-display text-lg font-semibold text-ivory-100">
+                      {activeShowcase.role}
+                    </h2>
+                    <span className="rounded-md border border-brass-500/40 bg-brass-500/10 px-2 py-0.5 font-mono text-xs font-medium text-brass-300">
+                      {activeShowcase.card.rank}
+                    </span>
+                  </div>
+                  <p className="text-sm leading-relaxed text-ivory-300">{activeShowcase.summary}</p>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Visual Hook */}
-        <motion.div
-          initial={{ opacity: 0, x: 50 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 1, delay: 0.2 }}
-          className="flex-1 flex justify-center items-center"
-        >
-          <HolographicCard />
-        </motion.div>
-      </section>
+        {/* Core Mechanics Overview */}
+        <section className="border-t border-parlor-border bg-parlor-surface/60">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 py-16 sm:py-20">
+            <div className="max-w-2xl mb-10">
+              <h2 className="font-display text-2xl sm:text-3xl font-semibold text-ivory-100">
+                Built for real-time table play
+              </h2>
+              <p className="mt-2 text-sm sm:text-base text-ivory-400">
+                Server-authoritative deck handling, instant room invites via code or QR, and
+                seamless reconnection if a player drops.
+              </p>
+            </div>
 
-      {/* Features Section */}
-      <section className="relative z-10 py-12 sm:py-20 px-4 bg-cyber-black/50 backdrop-blur-sm border-t border-white/5">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
-            <FeatureCard
-              icon={<Globe size={40} />}
-              title="Real-Time Multiplayer"
-              description="Instant connections. Zero lag. Play with friends anywhere in the world with our low-latency WebSocket infrastructure."
-              delay={0.2}
-            />
-            <FeatureCard
-              icon={<Smartphone size={40} />}
-              title="Telegram Native"
-              description="Jump straight into the action directly from your Telegram chats. Seamless integration for maximum accessibility."
-              delay={0.4}
-            />
-            <FeatureCard
-              icon={<Zap size={40} />}
-              title="High-Octane Action"
-              description="Fast-paced rules designed for quick, intense sessions. Experience card gaming at the speed of light."
-              delay={0.6}
-            />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <article className="surface-elevated p-6 space-y-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-crimson-500/15 text-crimson-400 border border-crimson-500/25">
+                  <Layers className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <h3 className="font-display text-lg font-semibold text-ivory-100">
+                  Stacking Punishments
+                </h3>
+                <p className="text-sm leading-relaxed text-ivory-400">
+                  Drop a 2 for +2 cards or the Ace of Spades for +5. Chain matching counters to pass
+                  an escalating penalty around the table.
+                </p>
+              </article>
+
+              <article className="surface-elevated p-6 space-y-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brass-500/15 text-brass-400 border border-brass-500/25">
+                  <Repeat2 className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <h3 className="font-display text-lg font-semibold text-ivory-100">
+                  Tactical Action Cards
+                </h3>
+                <p className="text-sm leading-relaxed text-ivory-400">
+                  Reverse direction with 5s, skip rivals or drop multi-card suit runs with 7s, and
+                  redirect the table with Jacks and 8s.
+                </p>
+              </article>
+
+              <article className="surface-elevated p-6 space-y-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-jade-500/15 text-jade-400 border border-jade-500/25">
+                  <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <h3 className="font-display text-lg font-semibold text-ivory-100">
+                  Live Blunder Challenges
+                </h3>
+                <p className="text-sm leading-relaxed text-ivory-400">
+                  Illegal plays open a brief window: catch your own mistake and revert in time, or
+                  get caught by an opponent calling Crazy.
+                </p>
+              </article>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-parlor-border bg-parlor-bg">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-ivory-500">
+          <p>Crazy Multiplayer Card Game</p>
+          <div className="flex items-center gap-5">
+            <Link href="/help" className="hover:text-ivory-200 transition-colors">
+              Rules &amp; Guide
+            </Link>
+            <button
+              type="button"
+              onClick={handleCreateTable}
+              className="hover:text-ivory-200 transition-colors"
+            >
+              Create Table
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenJoin}
+              className="hover:text-ivory-200 transition-colors"
+            >
+              Join Table
+            </button>
           </div>
         </div>
-      </section>
+      </footer>
 
-      {/* Game Selection Modal */}
-      <Modal
-        isOpen={showGameSelect}
-        onClose={() => setShowGameSelect(false)}
-        title="SELECT PROTOCOL"
-      >
-        <div className="space-y-4">
-          <button
-            onClick={handleGameSelect}
-            className="w-full btn-primary flex items-center justify-center gap-3 group"
-          >
-            <Gamepad2 size={24} className="group-hover:animate-bounce" />
-            <span>CRAZY CARD GAME</span>
-          </button>
-          <p className="text-center text-gray-500 text-sm font-mono">
-            // MORE_GAMES_LOADING...
-          </p>
-        </div>
-      </Modal>
-
-      {/* Mode Selection Modal */}
-      <Modal
-        isOpen={showModeSelect}
-        onClose={() => setShowModeSelect(false)}
-        title="SELECT MODE"
-      >
-        <div className="space-y-4">
-          <button
-            onClick={() => handleModeSelect('multi')}
-            className="w-full btn-primary flex items-center justify-center gap-3"
-          >
-            <Users size={24} />
-            <span>MULTIPLAYER</span>
-          </button>
-          <button
-            onClick={() => handleModeSelect('single')}
-            className="w-full btn-secondary flex items-center justify-center gap-3 opacity-50 cursor-not-allowed"
-            disabled
-          >
-            <Gamepad2 size={24} />
-            <span>SINGLE PLAYER (LOCKED)</span>
-          </button>
-        </div>
-      </Modal>
-
-      {/* User Info Modal */}
+      {/* Profile / Identity Modal */}
       <Modal
         isOpen={showUserInfo}
-        onClose={() => setShowUserInfo(false)}
-        title={isEditingProfile ? "EDIT PROFILE" : "IDENTITY VERIFICATION"}
+        onClose={() => {
+          if (!isLoading) setShowUserInfo(false);
+        }}
+        title={
+          pendingAction === 'profile'
+            ? 'Player Profile'
+            : pendingAction === 'join'
+            ? 'Join Table'
+            : 'Create a Table'
+        }
+        description={
+          pendingAction === 'profile'
+            ? 'Customize how you appear to other players.'
+            : 'Choose a display name and avatar before taking your seat.'
+        }
       >
         <UserInfoModal
           onSubmit={handleUserInfoSubmit}
-          isJoining={joinMode === 'join' && !isEditingProfile}
+          submitLabel={
+            pendingAction === 'profile'
+              ? 'Save Profile'
+              : pendingAction === 'join'
+              ? 'Join Table'
+              : 'Create Table'
+          }
+          isJoining={pendingAction === 'join'}
           isLoading={isLoading}
           initialUsername={username}
           initialAvatar={avatar}
         />
       </Modal>
 
-      {/* Join Game Modal */}
+      {/* Join Room Modal */}
       <Modal
-        isOpen={showJoinGameModal}
-        onClose={() => setShowJoinGameModal(false)}
-        title="JOIN PROTOCOL"
+        isOpen={showJoinModal}
+        onClose={() => setShowJoinModal(false)}
+        title="Join an Existing Table"
+        description="Enter a room code shared by the host."
       >
         <JoinGameModal
-          onJoin={handleJoinSubmit}
-          onCancel={() => setShowJoinGameModal(false)}
+          onJoin={handleJoinCodeSubmit}
+          onCancel={() => setShowJoinModal(false)}
         />
       </Modal>
-    </main>
+    </div>
   );
 }

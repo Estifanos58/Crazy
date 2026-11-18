@@ -1,9 +1,11 @@
 import type { Server } from 'socket.io';
 import { RoomService } from './room.service';
 import { RuleService } from './rule.service';
-import { CardService } from './card.service';
 import { RoomLockService } from './lock.service';
 import { TimerService } from './timer.service';
+import { SessionAuthService } from './session-auth.service';
+import { BlunderService } from './blunder.service';
+import { GameBroadcaster } from './game-broadcaster.service';
 import type {
   Card,
   GameEvent,
@@ -16,7 +18,7 @@ import type {
 
 export class GameOrchestrator {
   /**
-   * Authenticate player in room by token/id or socket fallback
+   * Delegate authentication to SessionAuthService
    */
   static authenticatePlayer(
     room: GameRoom,
@@ -24,25 +26,7 @@ export class GameOrchestrator {
     playerId?: string,
     playerToken?: string
   ): ServerPlayer | null {
-    // 1. Authenticate with persistent credentials
-    if (playerId && playerToken) {
-      const match = room.players.find(p => p.id === playerId && p.token === playerToken);
-      if (match) return match;
-      if (room.finishedPlayers) {
-        const finishedMatch = room.finishedPlayers.find(p => p.id === playerId && p.token === playerToken);
-        if (finishedMatch) return finishedMatch;
-      }
-    }
-
-    // 2. Fallback to socket ID if connected
-    const socketMatch = room.players.find(p => p.socketId === socketId);
-    if (socketMatch) return socketMatch;
-    if (room.finishedPlayers) {
-      const finishedSocketMatch = room.finishedPlayers.find(p => p.socketId === socketId);
-      if (finishedSocketMatch) return finishedSocketMatch;
-    }
-
-    return null;
+    return SessionAuthService.authenticatePlayer(room, socketId, playerId, playerToken);
   }
 
   /**
@@ -73,24 +57,25 @@ export class GameOrchestrator {
         return { success: false, error: 'Game is not in progress', events: [] };
       }
 
-      const player = this.authenticatePlayer(room, socketId, playerId, playerToken);
+      const player = SessionAuthService.authenticatePlayer(room, socketId, playerId, playerToken);
       if (!player) {
         return { success: false, error: 'Unauthorized or player not found', events: [] };
       }
 
-      // If player already finished, they cannot play
-      if (room.finishedPlayers?.some(fp => fp.id === player.id)) {
+      if (room.finishedPlayers?.some((fp) => fp.id === player.id)) {
         return { success: false, error: 'You have already finished this game', events: [] };
       }
 
-      // Check turn ownership
       if (room.currentTurn !== player.id) {
         return { success: false, error: 'Not your turn', events: [] };
       }
 
-      // If there is an active blunder in the room, it must be resolved first
       if (room.blunderState && room.blunderState.active) {
-        return { success: false, error: 'Cannot play while an active blunder is pending resolution', events: [] };
+        return {
+          success: false,
+          error: 'Cannot play while an active blunder is pending resolution',
+          events: [],
+        };
       }
 
       const gameState: GameState = {
@@ -108,9 +93,8 @@ export class GameOrchestrator {
         lastSuitChangedBy: room.lastSuitChangedBy,
       };
 
-      // Validate move (authoritative backend)
       const validation = RuleService.validateMove(gameState, player.id, cards);
-      const isBlunder = !validation.valid && validation.canChallengeCrazy;
+      const isBlunder = !validation.valid && Boolean(validation.canChallengeCrazy);
 
       if (!validation.valid && !isBlunder) {
         return {
@@ -120,58 +104,20 @@ export class GameOrchestrator {
         };
       }
 
-      // Handle Blunder
+      // Handle blunder via BlunderService
       if (isBlunder) {
-        const ruleConfig = RuleService.mergeConfig(room.ruleConfig);
-
-        // Remove cards from player's hand during blunder so no duplication can occur!
-        for (const card of cards) {
-          const cardIdx = player.cards.findIndex(c => c.id === card.id);
-          if (cardIdx !== -1) {
-            player.cards.splice(cardIdx, 1);
-          }
-        }
-
-        const revertTimeoutMs = 5000;
-        const challengeTimeoutMs = 8000;
-
-        room.blunderState = {
-          active: true,
-          playerId: player.id,
-          cards: cards,
-          penalty: ruleConfig.illegalTurnPenalty,
-          timestamp: Date.now(),
-          revertTimeoutMs,
-          challengeTimeoutMs,
-        };
-
-        await RoomService.saveRoom(room);
-
-        // Schedule server-side timeout
-        if (io) {
-          TimerService.setTimer(`blunder:${roomId}`, challengeTimeoutMs, async () => {
-            await GameOrchestrator.handleBlunderTimeout(roomId, io);
-          });
-        }
-
-        const events: GameEvent[] = [
-          {
-            type: 'invalid-move',
-            payload: {
-              playerId: player.id,
-              reason: validation.errors?.[0] || 'Invalid move',
-              canBeChallenged: true,
-              cards: cards,
-              timeoutMs: challengeTimeoutMs,
-            },
-          },
-        ];
-
+        const blunderResult = await BlunderService.registerBlunderUnlocked(
+          room,
+          player,
+          cards,
+          validation.errors?.[0] || 'Invalid move',
+          io
+        );
         return {
           success: true,
           isBlunder: true,
-          events,
-          room,
+          events: blunderResult.events,
+          room: blunderResult.room,
         };
       }
 
@@ -188,14 +134,16 @@ export class GameOrchestrator {
       );
 
       // Check if player finished (ran out of cards)
-      const finishedPlayer = updatedState.players.find(p => p.id === player.id && p.cards.length === 0);
+      const finishedPlayer = updatedState.players.find(
+        (p) => p.id === player.id && p.cards.length === 0
+      );
       if (finishedPlayer) {
         if (!room.finishedPlayers) room.finishedPlayers = [];
         const rank = room.finishedPlayers.length + 1;
         finishedPlayer.rank = rank;
         finishedPlayer.finishedAt = Date.now();
 
-        room.players = updatedState.players.filter(p => p.id !== finishedPlayer.id);
+        room.players = updatedState.players.filter((p) => p.id !== finishedPlayer.id);
         room.finishedPlayers.push(finishedPlayer);
 
         events.push({
@@ -212,7 +160,6 @@ export class GameOrchestrator {
           room.gameOver = true;
           room.gameStarted = false;
 
-          // Assign final rank to remaining player if any
           if (room.players.length === 1) {
             const lastPlayer = room.players[0];
             lastPlayer.rank = rank + 1;
@@ -221,7 +168,9 @@ export class GameOrchestrator {
             room.players = [];
           }
 
-          const rankings: RankedPlayer[] = RoomService.sanitizeRankedPlayers(room.finishedPlayers);
+          const rankings: RankedPlayer[] = GameBroadcaster.sanitizeRankedPlayers(
+            room.finishedPlayers
+          );
           events.push({
             type: 'game-over',
             payload: { rankings },
@@ -233,198 +182,42 @@ export class GameOrchestrator {
 
       room.deck = updatedState.deck;
       room.pile = updatedState.pile;
-      room.currentTurn = updatedState.currentTurn;
+      room.currentTurn = room.gameOver ? undefined : updatedState.currentTurn;
       room.currentSuit = updatedState.currentSuit;
       room.turnDirection = updatedState.turnDirection;
       room.punishmentChain = updatedState.punishmentChain;
       room.lastSuitChangedBy = updatedState.lastSuitChangedBy;
-      room.drawCount = 0; // Reset draw count when a valid card is played
+      room.drawCount = 0;
 
       await RoomService.saveRoom(room);
       return { success: true, events, room };
     });
   }
 
-  /**
-   * Revert blunder move
-   */
-  static async revertBlunder(
+  static revertBlunder(
     roomId: string,
     socketId: string,
     playerId?: string,
     playerToken?: string
-  ): Promise<{ success: boolean; error?: string; events: GameEvent[]; room?: GameRoom }> {
-    return await RoomLockService.runWithLock(roomId, async () => {
-      const room = await RoomService.getRoom(roomId);
-      if (!room) return { success: false, error: 'Room not found', events: [] };
-
-      const player = this.authenticatePlayer(room, socketId, playerId, playerToken);
-      if (!player) return { success: false, error: 'Unauthorized', events: [] };
-
-      if (!room.blunderState || !room.blunderState.active || room.blunderState.playerId !== player.id) {
-        return { success: false, error: 'No active blunder to revert', events: [] };
-      }
-
-      // Check timeout (default 5s)
-      const timeoutMs = room.blunderState.revertTimeoutMs || 5000;
-      if (Date.now() - room.blunderState.timestamp > timeoutMs) {
-        return { success: false, error: 'Revert window has expired', events: [] };
-      }
-
-      TimerService.clearRoomTimers(roomId);
-
-      // Return cards safely to player hand (they were removed on blunder play)
-      player.cards.push(...room.blunderState.cards);
-      room.blunderState = undefined;
-
-      await RoomService.saveRoom(room);
-
-      const events: GameEvent[] = [
-        {
-          type: 'blunder-reverted',
-          payload: {
-            playerId: player.id,
-            message: 'Move reverted successfully',
-          },
-        },
-      ];
-
-      return { success: true, events, room };
-    });
+  ) {
+    return BlunderService.revertBlunder(roomId, socketId, playerId, playerToken);
   }
 
-  /**
-   * Challenge blunder by calling Crazy
-   */
-  static async callCrazy(
+  static callCrazy(
     roomId: string,
     socketId: string,
     callerId?: string,
     callerToken?: string
-  ): Promise<{ success: boolean; error?: string; events: GameEvent[]; room?: GameRoom }> {
-    return await RoomLockService.runWithLock(roomId, async () => {
-      const room = await RoomService.getRoom(roomId);
-      if (!room) return { success: false, error: 'Room not found', events: [] };
+  ) {
+    return BlunderService.callCrazy(roomId, socketId, callerId, callerToken);
+  }
 
-      const caller = this.authenticatePlayer(room, socketId, callerId, callerToken);
-      if (!caller) return { success: false, error: 'Unauthorized', events: [] };
-
-      if (!room.blunderState || !room.blunderState.active) {
-        return { success: false, error: 'No active blunder to challenge', events: [] };
-      }
-
-      // Caller cannot challenge their own blunder!
-      if (caller.id === room.blunderState.playerId) {
-        return { success: false, error: 'Cannot call crazy on your own blunder', events: [] };
-      }
-
-      // Check challenge window (default 8s)
-      const timeoutMs = room.blunderState.challengeTimeoutMs || 8000;
-      if (Date.now() - room.blunderState.timestamp > timeoutMs) {
-        return { success: false, error: 'Challenge window has expired', events: [] };
-      }
-
-      TimerService.clearRoomTimers(roomId);
-
-      const blunderPlayer = room.players.find(p => p.id === room.blunderState!.playerId);
-      if (!blunderPlayer) {
-        room.blunderState = undefined;
-        await RoomService.saveRoom(room);
-        return { success: false, error: 'Blunder player not found', events: [] };
-      }
-
-      // Return the played blunder cards to the player
-      blunderPlayer.cards.push(...room.blunderState.cards);
-
-      // Apply penalty cards
-      const penalty = room.blunderState.penalty || 2;
-      const penaltyCards = CardService.drawCards(room, penalty);
-      blunderPlayer.cards.push(...penaltyCards);
-
-      // Turn remains with blunder player per Crazy rules
-      room.currentTurn = blunderPlayer.id;
-      room.blunderState = undefined;
-
-      await RoomService.saveRoom(room);
-
-      const events: GameEvent[] = [
-        {
-          type: 'crazy-called',
-          payload: {
-            success: true,
-            callerId: caller.id,
-            targetId: blunderPlayer.id,
-            penalty,
-          },
-        },
-        {
-          type: 'cards_drawn',
-          playerId: blunderPlayer.id,
-          amount: penalty,
-        },
-      ];
-
-      return { success: true, events, room };
-    });
+  static handleBlunderTimeout(roomId: string, io?: Server) {
+    return BlunderService.handleBlunderTimeout(roomId, io);
   }
 
   /**
-   * Handle server-side blunder timeout (no revert and no challenge)
-   */
-  static async handleBlunderTimeout(roomId: string, io: Server): Promise<void> {
-    await RoomLockService.runWithLock(roomId, async () => {
-      const room = await RoomService.getRoom(roomId);
-      if (!room || !room.blunderState || !room.blunderState.active) return;
-
-      const blunderPlayer = room.players.find(p => p.id === room.blunderState!.playerId);
-      if (!blunderPlayer) {
-        room.blunderState = undefined;
-        await RoomService.saveRoom(room);
-        return;
-      }
-
-      // Return cards to hand
-      blunderPlayer.cards.push(...room.blunderState.cards);
-
-      // Draw penalty cards
-      const penalty = room.blunderState.penalty || 2;
-      const penaltyCards = CardService.drawCards(room, penalty);
-      blunderPlayer.cards.push(...penaltyCards);
-
-      // Advance turn to next player
-      const currentIndex = room.players.findIndex(p => p.id === blunderPlayer.id);
-      const direction = room.turnDirection === 'clockwise' ? 1 : -1;
-      const nextIndex = (currentIndex + direction + room.players.length) % room.players.length;
-      room.currentTurn = room.players[nextIndex].id;
-      room.drawCount = 0;
-      room.blunderState = undefined;
-
-      await RoomService.saveRoom(room);
-
-      // Broadcast events
-      const events: GameEvent[] = [
-        {
-          type: 'blunder-timeout',
-          payload: {
-            playerId: blunderPlayer.id,
-            penalty,
-            message: 'Blunder not reverted - penalty applied',
-          },
-        },
-        {
-          type: 'cards_drawn',
-          playerId: blunderPlayer.id,
-          amount: penalty,
-        },
-      ];
-
-      events.forEach(e => io.to(room.roomId).emit('game-event', e));
-      this.broadcastGameUpdate(room, io);
-    });
-  }
-
-  /**
-   * Take punishment or draw single card
+   * Take punishment or draw single card / pass turn
    */
   static async takePunishment(
     roomId: string,
@@ -440,15 +233,13 @@ export class GameOrchestrator {
         return { success: false, error: 'Game is not in progress', events: [] };
       }
 
-      const player = this.authenticatePlayer(room, socketId, playerId, playerToken);
+      const player = SessionAuthService.authenticatePlayer(room, socketId, playerId, playerToken);
       if (!player) return { success: false, error: 'Unauthorized', events: [] };
 
-      // Strictly enforce turn ownership
       if (room.currentTurn !== player.id) {
         return { success: false, error: 'Not your turn to draw or take punishment', events: [] };
       }
 
-      // Cannot draw while an active blunder is pending
       if (room.blunderState && room.blunderState.active) {
         return { success: false, error: 'Cannot take action while blunder is pending', events: [] };
       }
@@ -472,33 +263,31 @@ export class GameOrchestrator {
       let events: GameEvent[] = [];
       let updatedState: GameState;
 
-      // Active punishment chain
       if (gameState.punishmentChain.active && gameState.punishmentChain.amount > 0) {
         const result = RuleService.takePunishmentCardsNoAdvance(gameState, player.id);
         updatedState = result.updatedState;
         events = result.events;
         room.drawCount = 0;
+      } else if (room.drawCount >= 1) {
+        // Already drew 1 card: pass turn to next active player
+        updatedState = { ...gameState };
+        const currentIndex = gameState.players.findIndex((p) => p.id === player.id);
+        const direction = gameState.turnDirection === 'clockwise' ? 1 : -1;
+        const nextIndex =
+          (currentIndex + direction + gameState.players.length) % gameState.players.length;
+        updatedState.currentTurn = gameState.players[nextIndex].id;
+        room.drawCount = 0;
       } else {
-        // No punishment: draw 1 card or pass turn if already drew
-        if (room.drawCount >= 1) {
-          // Already drew 1 card: pass turn to next player
-          updatedState = { ...gameState };
-          const currentIndex = gameState.players.findIndex(p => p.id === player.id);
-          const direction = gameState.turnDirection === 'clockwise' ? 1 : -1;
-          const nextIndex = (currentIndex + direction + gameState.players.length) % gameState.players.length;
-          updatedState.currentTurn = gameState.players[nextIndex].id;
-          room.drawCount = 0;
-        } else {
-          // First draw: draw 1 card, turn stays
-          room.drawCount = 1;
-          const result = RuleService.drawSingleCardNoAdvance(gameState, player.id);
-          updatedState = result.updatedState;
-          events = result.events;
-        }
+        // First draw: draw 1 card, turn stays
+        room.drawCount = 1;
+        const result = RuleService.drawSingleCardNoAdvance(gameState, player.id);
+        updatedState = result.updatedState;
+        events = result.events;
       }
 
       room.players = updatedState.players;
       room.deck = updatedState.deck;
+      room.pile = updatedState.pile;
       room.currentTurn = updatedState.currentTurn;
       room.punishmentChain = updatedState.punishmentChain;
 
@@ -508,7 +297,7 @@ export class GameOrchestrator {
   }
 
   /**
-   * Leave game or terminate room
+   * Leave game or terminate room (host only)
    */
   static async leaveGame(
     roomId: string,
@@ -520,53 +309,98 @@ export class GameOrchestrator {
     terminated: boolean;
     leavingPlayer?: ServerPlayer;
     room?: GameRoom;
+    events: GameEvent[];
     error?: string;
   }> {
     return await RoomLockService.runWithLock(roomId, async () => {
       const room = await RoomService.getRoom(roomId);
-      if (!room) return { terminated: false, error: 'Room not found' };
+      if (!room) return { terminated: false, events: [], error: 'Room not found' };
 
-      const player = this.authenticatePlayer(room, socketId, playerId, playerToken);
-      if (!player) return { terminated: false, error: 'Player not found in room' };
+      const player = SessionAuthService.authenticatePlayer(room, socketId, playerId, playerToken);
+      if (!player) return { terminated: false, events: [], error: 'Player not found in room' };
 
-      // Strictly check creator authority for termination!
       const isActualCreator = room.creatorId === player.id;
       if (isCreatorRequested && isActualCreator) {
         TimerService.clearRoomTimers(roomId);
         await RoomService.deleteRoom(roomId);
-        return { terminated: true, leavingPlayer: player };
+        return { terminated: true, leavingPlayer: player, events: [] };
       }
 
-      // Regular player leaving
-      room.players = room.players.filter(p => p.id !== player.id);
+      const events: GameEvent[] = [];
+
+      // Compute next turn BEFORE removing the leaving player so turn order stays accurate
+      let nextTurnAfterLeave = room.currentTurn;
+      const leavingIndex = room.players.findIndex((p) => p.id === player.id);
+      if (room.gameStarted && room.currentTurn === player.id && room.players.length > 1 && leavingIndex !== -1) {
+        const direction = room.turnDirection === 'clockwise' ? 1 : -1;
+        const nextIdx = (leavingIndex + direction + room.players.length) % room.players.length;
+        nextTurnAfterLeave = room.players[nextIdx].id;
+      }
+
+      // Clear active blunder if the leaving player caused it
+      if (room.blunderState?.active && room.blunderState.playerId === player.id) {
+        TimerService.clearRoomTimers(roomId);
+        room.blunderState = undefined;
+      }
+
+      // Remove player from active and finished lists
+      room.players = room.players.filter((p) => p.id !== player.id);
       if (room.finishedPlayers) {
-        room.finishedPlayers = room.finishedPlayers.filter(p => p.id !== player.id);
+        room.finishedPlayers = room.finishedPlayers.filter((p) => p.id !== player.id);
       }
 
-      // If leaving player was creator, transfer host to next player
-      if (isActualCreator && room.players.length > 0) {
-        room.creatorId = room.players[0].id;
-        room.players[0].isCreator = true;
+      // If room is now completely empty, clean up Redis + timers
+      const totalRemaining = room.players.length + (room.finishedPlayers?.length || 0);
+      if (totalRemaining === 0) {
+        TimerService.clearRoomTimers(roomId);
+        await RoomService.deleteRoom(roomId);
+        return { terminated: true, leavingPlayer: player, events: [] };
       }
 
-      // Advance turn if leaving player had current turn
-      if (room.gameStarted && room.currentTurn === player.id && room.players.length > 0) {
-        room.currentTurn = room.players[0].id;
+      // Transfer host if leaving player was creator
+      if (isActualCreator) {
+        const nextHost = room.players[0] || room.finishedPlayers?.[0];
+        if (nextHost) {
+          room.creatorId = nextHost.id;
+          nextHost.isCreator = true;
+        }
       }
 
-      // If only 1 player remains in an active game, end game
+      if (room.gameStarted && room.currentTurn === player.id) {
+        room.currentTurn = nextTurnAfterLeave;
+        room.drawCount = 0;
+      }
+
+      // If <= 1 active players remain during an active game, conclude the match properly
       if (room.gameStarted && room.players.length <= 1) {
+        TimerService.clearRoomTimers(roomId);
         room.gameOver = true;
         room.gameStarted = false;
+        room.currentTurn = undefined;
+
+        if (!room.finishedPlayers) room.finishedPlayers = [];
+        if (room.players.length === 1) {
+          const winner = room.players[0];
+          winner.rank = room.finishedPlayers.length + 1;
+          winner.finishedAt = Date.now();
+          room.finishedPlayers.push(winner);
+          room.players = [];
+        }
+
+        const rankings = GameBroadcaster.sanitizeRankedPlayers(room.finishedPlayers);
+        events.push({
+          type: 'game-over',
+          payload: { rankings },
+        });
       }
 
       await RoomService.saveRoom(room);
-      return { terminated: false, leavingPlayer: player, room };
+      return { terminated: false, leavingPlayer: player, room, events };
     });
   }
 
   /**
-   * Play Again / Restart Game
+   * Play Again / Restart Game (strictly enforces gameOver lifecycle & host auth)
    */
   static async playAgain(
     roomId: string,
@@ -578,59 +412,44 @@ export class GameOrchestrator {
       const room = await RoomService.getRoom(roomId);
       if (!room) return { success: false, error: 'Room not found' };
 
-      const player = this.authenticatePlayer(room, socketId, playerId, playerToken);
+      const player = SessionAuthService.authenticatePlayer(room, socketId, playerId, playerToken);
       if (!player) return { success: false, error: 'Unauthorized' };
 
-      // Only host/creator can restart the game
       if (room.creatorId !== player.id) {
         return { success: false, error: 'Only room host can start a new game' };
       }
 
+      // Enforce lifecycle: Play Again is only valid after a game has ended
+      if (!room.gameOver) {
+        return { success: false, error: 'Cannot restart while a game is not finished' };
+      }
+
+      const totalPlayers = room.players.length + (room.finishedPlayers?.length || 0);
+      if (totalPlayers < 2) {
+        return { success: false, error: 'At least 2 players are required to play again' };
+      }
+
       TimerService.clearRoomTimers(roomId);
 
-      // Reset game and restore all finished players back into room.players
-      const resetRoom = await RoomService.resetGame(room);
+      const resetRoom = await RoomService.resetGameUnlocked(room);
 
       const cardsPerPlayer = resetRoom.rules?.cardsPerPlayer || 7;
       const customRules = resetRoom.rules?.customRules;
+      const rulePreset = resetRoom.rules?.rulePreset;
 
-      const startedRoom = await RoomService.startGame({
+      const startedRoom = await RoomService.startGameUnlocked(resetRoom, {
         roomId,
         cardsPerPlayer,
         customRules,
+        rulePreset,
         ruleConfig: resetRoom.ruleConfig,
       });
-
-      if (!startedRoom) {
-        return { success: false, error: 'Failed to start new game' };
-      }
 
       return { success: true, room: startedRoom };
     });
   }
 
-  /**
-   * Broadcast game update safely to all players
-   */
   static broadcastGameUpdate(room: GameRoom, io: Server): void {
-    const allPlayers = [...room.players, ...(room.finishedPlayers || [])];
-
-    const sanitizedActive = RoomService.sanitizePlayers(room.players);
-    const sanitizedFinished = RoomService.sanitizeRankedPlayers(room.finishedPlayers || []);
-    const topCard = room.pile && room.pile.length > 0 ? room.pile[room.pile.length - 1] : undefined;
-
-    allPlayers.forEach(player => {
-      const target = player.socketId || `player:${player.id}`;
-      io.to(target).emit('game-update', {
-        players: sanitizedActive,
-        finishedPlayers: sanitizedFinished,
-        currentTurn: room.currentTurn,
-        topCard,
-        currentSuit: room.currentSuit,
-        yourCards: player.cards,
-        punishmentChain: room.punishmentChain,
-        drawCount: room.drawCount || 0,
-      });
-    });
+    GameBroadcaster.broadcastGameUpdate(room, io);
   }
 }

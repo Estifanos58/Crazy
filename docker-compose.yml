@@ -1,12 +1,10 @@
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
     container_name: crazy-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # Redis is intentionally NOT exposed on host ports; accessible only within crazy-network
+    command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
     healthcheck:
@@ -19,45 +17,47 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: crazy-backend
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "${BACKEND_PORT:-3001}:3001"
     environment:
       PORT: 3001
-      REDIS_URL: redis://redis:6379
-      CORS_ORIGIN: http://localhost:3000
+      REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379}
+      REDIS_REQUIRED: ${REDIS_REQUIRED:-true}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       NODE_ENV: production
     depends_on:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/health/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 5s
+      start_period: 10s
     networks:
       - crazy-network
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
-        NEXT_PUBLIC_BACKEND_URL: http://localhost:3001
-        NEXT_PUBLIC_SITE_URL: http://localhost:3000
+        NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:3001}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
     container_name: crazy-frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
-      NEXT_PUBLIC_BACKEND_URL: http://localhost:3001
-      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:3001}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
     depends_on:
       backend:
         condition: service_healthy

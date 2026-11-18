@@ -1,6 +1,12 @@
-export type Suit = 'hearts' | 'diamonds' | 'clubs' | 'spades';
-export type Rank = 'A' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K';
+export const SUITS = ['hearts', 'diamonds', 'clubs', 'spades'] as const;
+export type Suit = (typeof SUITS)[number];
+
+export const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'] as const;
+export type Rank = (typeof RANKS)[number];
+
 export type TurnDirection = 'clockwise' | 'counterclockwise';
+
+export type RulePresetName = 'standard' | 'hardcore' | 'beginner' | 'chaos' | 'classic';
 
 export interface Card {
   suit: Suit;
@@ -14,7 +20,7 @@ export interface Player {
   avatar: string;
   cardCount: number;
   isCreator: boolean;
-  rank?: number; // Position when finished (1st, 2nd, etc.)
+  rank?: number;
   finishedAt?: number;
   connected?: boolean;
 }
@@ -70,16 +76,45 @@ export interface PunishmentChain {
 export interface GameRules {
   cardsPerPlayer: number;
   customRules?: string;
+  rulePreset?: RulePresetName;
 }
 
 export interface BlunderState {
   active: boolean;
   playerId: string;
   cards: Card[];
+  reason: string;
   penalty: number;
   timestamp: number;
-  revertTimeoutMs?: number;
-  challengeTimeoutMs?: number;
+  revertTimeoutMs: number;
+  challengeTimeoutMs: number;
+}
+
+export interface BlunderInfo {
+  active: boolean;
+  playerId: string;
+  reason: string;
+  cards: Card[];
+  timeLeft: number;
+  canRevert: boolean;
+}
+
+export interface PublicRoom {
+  roomId: string;
+  creatorId: string;
+  players: Player[];
+  finishedPlayers?: RankedPlayer[];
+  gameStarted: boolean;
+  gameOver?: boolean;
+  currentTurn?: string;
+  currentSuit?: Suit;
+  turnDirection?: TurnDirection;
+  rules?: GameRules;
+  ruleConfig?: RuleConfig;
+  deckCount?: number;
+  pileCount?: number;
+  topCard?: Card;
+  createdAt: number;
 }
 
 export type GameEvent =
@@ -92,7 +127,17 @@ export type GameEvent =
   | { type: 'player-skipped'; payload: { playerId: string } }
   | { type: 'suit-changed'; payload: { suit: Suit } }
   | { type: 'crazy-called'; payload: { success: boolean; callerId: string; targetId: string; penalty: number } }
-  | { type: 'invalid-move'; payload: { playerId: string; reason: string; canBeChallenged: boolean; cards?: Card[]; timeoutMs?: number } }
+  | {
+      type: 'invalid-move';
+      payload: {
+        playerId: string;
+        reason: string;
+        canBeChallenged: boolean;
+        cards?: Card[];
+        revertTimeoutMs?: number;
+        timeoutMs?: number;
+      };
+    }
   | { type: 'blunder-reverted'; payload: { playerId: string; message: string } }
   | { type: 'blunder-timeout'; payload: { playerId: string; penalty: number; message: string } }
   | { type: 'win'; playerId: string; playerName: string }
@@ -100,27 +145,57 @@ export type GameEvent =
   | { type: 'game-over'; payload: { rankings: RankedPlayer[] } }
   | { type: 'turn-changed'; payload: { playerId: string } };
 
-export interface GameStateResponse {
+export interface GameStartedPayload {
   roomId: string;
   players: Player[];
-  finishedPlayers: RankedPlayer[];
   currentTurn: string;
+  yourCards: Card[];
+  topCard?: Card;
+  currentSuit?: Suit;
+  turnDirection: TurnDirection;
+  punishmentChain: PunishmentChain;
+  deckCount: number;
+  pileCount: number;
+  rules?: GameRules;
+  ruleConfig?: RuleConfig;
+}
+
+export interface GameUpdatePayload {
+  players: Player[];
+  finishedPlayers: RankedPlayer[];
+  currentTurn?: string;
+  topCard?: Card;
+  currentSuit?: Suit;
+  turnDirection: TurnDirection;
+  yourCards: Card[];
+  punishmentChain: PunishmentChain;
+  drawCount: number;
+  deckCount: number;
+  pileCount: number;
+  gameOver: boolean;
+  gameStarted: boolean;
+  creatorId: string;
+}
+
+export interface GameStateResponse {
+  roomId: string;
+  creatorId: string;
+  players: Player[];
+  finishedPlayers: RankedPlayer[];
+  currentTurn?: string;
   topCard?: Card;
   currentSuit?: Suit;
   yourCards: Card[];
-  punishmentChain?: PunishmentChain;
+  punishmentChain: PunishmentChain;
   turnDirection: TurnDirection;
+  gameStarted: boolean;
   gameOver: boolean;
   pileCount: number;
   deckCount: number;
   drawCount: number;
-  isFinished?: boolean;
+  rules?: GameRules;
+  ruleConfig?: RuleConfig;
+  isFinished: boolean;
   rank?: number;
-  blunderState?: {
-    active: boolean;
-    playerId: string;
-    cards: Card[];
-    timeLeft: number;
-    canRevert: boolean;
-  };
+  blunderState?: BlunderInfo;
 }

@@ -1,295 +1,532 @@
 'use client';
 
-import { ArrowLeft, Zap, Shield, Play, AlertTriangle, Hand } from 'lucide-react';
-import { motion } from 'framer-motion';
+import {
+  AlertTriangle,
+  ArrowDownUp,
+  ArrowLeft,
+  BookOpen,
+  Hand,
+  Loader2,
+  Play,
+  RotateCcw,
+  RotateCw,
+  SkipForward,
+  Trophy,
+  X,
+} from 'lucide-react';
+import CardComponent, { CardBack, SUIT_NAMES, SUIT_SYMBOLS } from '@/components/Card';
 import CardHand from '@/components/CardHand';
-import PlayerList from '@/components/PlayerList';
-import Background from '@/components/Background';
 import SuitSelectionModal from '@/components/SuitSelectionModal';
 import GameOverModal from '@/components/GameOverModal';
 import BlunderModal from '@/components/BlunderModal';
 import { AbortGameModal } from '@/components/AbortGameModal';
+import { QuickRulesModal } from '@/components/QuickRulesModal';
 import { useGameLogic } from '@/hooks/useGameLogic';
+import type { SortMode } from '@/hooks/useGameLogic';
+
+function formatRoomCode(code: string): string {
+  if (code.length === 6 && /^\d+$/.test(code)) {
+    return `${code.slice(0, 3)} ${code.slice(3)}`;
+  }
+  return code;
+}
+
+function getRankSuffix(rank: number): string {
+  if (rank === 1) return 'st';
+  if (rank === 2) return 'nd';
+  if (rank === 3) return 'rd';
+  return 'th';
+}
 
 export default function GamePage() {
   const {
     roomId,
-    socket,
     isReconnecting,
     isYourTurn,
     handleLeaveGame,
     currentTurn,
+    currentTurnPlayer,
     currentSuit,
+    turnDirection,
     topCard,
     punishmentChain,
     yourCards,
     selectedCards,
+    sortMode,
+    setSortMode,
     handleTakePunishment,
     loadingAction,
     drawCount,
+    deckCount,
+    pileCount,
     handleCallCrazy,
     handlePlayCards,
     handleCardClick,
+    handleClearSelection,
     activePlayers,
     finishedPlayers,
+    playerId,
+    isFinished,
+    myRank,
     showSuitModal,
     handleSuitSelect,
     setShowSuitModal,
     setPendingCards,
-    blunderActive,
+    isMyBlunder,
+    canCallCrazy,
     blunderReason,
-    blunderPlayerId,
+    blunderPlayerName,
     blunderTimeLeft,
+    blunderTotalTime,
     handleRevertBlunder,
     gameOver,
     rankings,
     handlePlayAgain,
     handleExitGame,
     showAbortModal,
+    showRulesModal,
     isCreator,
     handleConfirmLeave,
     setShowAbortModal,
+    setShowRulesModal,
   } = useGameLogic();
 
+  const opponents = activePlayers.filter((p) => p.id !== playerId);
+  const finishedOpponents = finishedPlayers.filter((p) => p.id !== playerId);
+
+  const cycleSortMode = () => {
+    const order: SortMode[] = ['suit', 'rank', 'none'];
+    const next = order[(order.indexOf(sortMode) + 1) % order.length];
+    setSortMode(next);
+  };
+
+  const drawActionLabel = punishmentChain?.active
+    ? `Take +${punishmentChain.amount}`
+    : drawCount >= 1
+    ? 'Pass Turn'
+    : 'Draw Card';
+
+  const isRedSuit = currentSuit === 'hearts' || currentSuit === 'diamonds';
+
   return (
-    <main className="min-h-screen relative overflow-hidden flex flex-col p-2 sm:p-4 md:p-8">
-      <Background />
-      
+    <div className="min-h-screen flex flex-col bg-parlor-bg text-ivory-200">
       {/* Reconnecting Overlay */}
       {isReconnecting && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="glass-panel p-8 text-center space-y-4">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-cyber-primary mx-auto"></div>
-            <h2 className="text-2xl font-bold text-white">Reconnecting...</h2>
-            <p className="text-gray-400">Restoring your game session</p>
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4"
+        >
+          <div className="surface-panel max-w-xs w-full p-7 text-center space-y-3">
+            <Loader2 className="h-8 w-8 animate-spin text-brass-400 mx-auto" aria-hidden="true" />
+            <h2 className="font-display text-xl font-semibold text-ivory-100">Reconnecting…</h2>
+            <p className="text-sm text-ivory-400">
+              Restoring your seat and synchronizing the deck.
+            </p>
           </div>
         </div>
       )}
-      
-      <div className="relative z-10 max-w-7xl mx-auto w-full space-y-4 sm:space-y-6">
-        {/* Header */}
-        <div className="glass-panel p-2 sm:p-4 flex justify-between items-center">
+
+      {/* Top Table Header */}
+      <header className="border-b border-parlor-border bg-parlor-bg/95 sticky top-0 z-30">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-3 sm:px-6 h-14">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={handleLeaveGame}
+              className="btn-ghost px-2.5 py-1.5 text-xs sm:text-sm min-h-[36px]"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden sm:inline">{isCreator ? 'End Match' : 'Leave'}</span>
+            </button>
+
+            <div className="h-4 w-px bg-parlor-border" />
+
+            <span className="font-mono text-xs sm:text-sm font-semibold text-ivory-200 bg-parlor-surface border border-parlor-border px-2.5 py-1 rounded-lg">
+              {formatRoomCode(roomId)}
+            </span>
+          </div>
+
+          {/* Center Turn Direction Pill */}
+          <div className="hidden md:flex items-center gap-2 rounded-full border border-parlor-border bg-parlor-surface px-3.5 py-1 text-xs font-medium text-ivory-300">
+            {turnDirection === 'clockwise' ? (
+              <RotateCw className="h-3.5 w-3.5 text-brass-400" aria-hidden="true" />
+            ) : (
+              <RotateCcw className="h-3.5 w-3.5 text-brass-400" aria-hidden="true" />
+            )}
+            <span>{turnDirection === 'clockwise' ? 'Clockwise' : 'Counter-clockwise'}</span>
+          </div>
+
           <button
-            onClick={handleLeaveGame}
-            className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors hover:bg-white/10 px-2 sm:px-4 py-2 rounded-lg"
+            type="button"
+            onClick={() => setShowRulesModal(true)}
+            className="btn-ghost px-2.5 py-1.5 text-xs sm:text-sm min-h-[36px]"
           >
-            <ArrowLeft size={20} />
-            <span className="font-mono uppercase hidden sm:inline">Abort Mission</span>
+            <BookOpen className="h-4 w-4 text-ivory-400" aria-hidden="true" />
+            <span className="hidden sm:inline">Rules</span>
           </button>
-          
-          <div className="text-center">
-            <div className="flex items-center gap-3 justify-center mb-1">
-              <span className="text-cyber-primary font-bold tracking-widest uppercase text-xs sm:text-sm">Sector</span>
-              <code className="bg-cyber-black/50 border border-cyber-primary/30 px-2 sm:px-3 py-1 rounded text-sm sm:text-lg font-mono text-white shadow-[0_0_10px_rgba(0,243,255,0.2)]">
-                {roomId}
-              </code>
-            </div>
-            {isYourTurn && (
-              <motion.div 
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="text-cyber-accent font-bold uppercase tracking-widest text-xs sm:text-sm animate-pulse flex items-center justify-center gap-2"
+        </div>
+      </header>
+
+      {/* Main Card Table Workspace */}
+      <main className="mx-auto w-full max-w-7xl flex-1 flex flex-col justify-between px-3 sm:px-6 py-4 sm:py-5 gap-4">
+        {/* Opponents Seating Strip */}
+        <section aria-label="Opponents" className="w-full">
+          <div className="flex items-center gap-2.5 overflow-x-auto pb-1">
+            {opponents.map((player) => {
+              const isActiveTurn = currentTurn === player.id;
+              const isOnline = player.connected !== false;
+
+              return (
+                <div
+                  key={player.id}
+                  className={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 min-w-[175px] sm:min-w-[200px] shrink-0 transition-colors ${
+                    isActiveTurn
+                      ? 'border-brass-500 bg-brass-500/12'
+                      : 'border-parlor-border bg-parlor-surface'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-parlor-border bg-parlor-elevated text-lg">
+                      <span aria-hidden="true">{player.avatar}</span>
+                      <span
+                        title={isOnline ? 'Connected' : 'Offline'}
+                        className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-parlor-surface ${
+                          isOnline ? 'bg-jade-400' : 'bg-ivory-500'
+                        }`}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-ivory-100">
+                        {player.username}
+                      </p>
+                      <p className="text-[11px] text-ivory-400">
+                        {isActiveTurn ? (
+                          <span className="font-semibold text-brass-300">Playing turn</span>
+                        ) : !isOnline ? (
+                          'Reconnecting…'
+                        ) : (
+                          'Waiting'
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Miniature card count stack */}
+                  <div
+                    className="flex items-center gap-1 rounded-lg border border-parlor-border bg-parlor-bg px-2 py-1 font-mono text-xs font-semibold text-ivory-100 shrink-0"
+                    title={`${player.cardCount} cards in hand`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="inline-block h-3.5 w-2.5 rounded-[2px] border border-brass-500/60 card-back-pattern"
+                    />
+                    <span>{player.cardCount}</span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {finishedOpponents.map((player) => (
+              <div
+                key={`fin-${player.id}`}
+                className="flex items-center gap-2.5 rounded-xl border border-parlor-border bg-parlor-surface/60 px-3.5 py-2.5 min-w-[160px] shrink-0"
               >
-                <Zap size={14} /> YOUR TURN <Zap size={14} />
-              </motion.div>
+                <span className="text-lg" aria-hidden="true">
+                  {player.avatar}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-ivory-300">{player.username}</p>
+                  <p className="inline-flex items-center gap-1 text-[11px] font-medium text-brass-400">
+                    <Trophy className="h-3 w-3" aria-hidden="true" />
+                    <span>
+                      {player.rank}
+                      {getRankSuffix(player.rank)} place
+                    </span>
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Opponent Blunder Challenge Banner */}
+        {canCallCrazy && (
+          <section
+            role="alert"
+            className="flex flex-col sm:flex-row items-center justify-between gap-3 rounded-2xl border border-crimson-500/60 bg-crimson-500/15 px-4 sm:px-5 py-3.5"
+          >
+            <div className="flex items-center gap-3 text-center sm:text-left">
+              <AlertTriangle className="h-5 w-5 text-crimson-400 shrink-0" aria-hidden="true" />
+              <div className="text-sm">
+                <p className="font-semibold text-ivory-50">
+                  {blunderPlayerName} made an illegal play!
+                </p>
+                <p className="text-xs text-ivory-300">
+                  Call Crazy within{' '}
+                  <span className="font-mono font-semibold text-ivory-100">
+                    {blunderTimeLeft}s
+                  </span>{' '}
+                  to penalize them before they revert.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCallCrazy}
+              disabled={loadingAction !== null}
+              className="btn-danger px-5 py-2.5 text-sm shrink-0 w-full sm:w-auto"
+            >
+              {loadingAction === 'crazy' ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+              )}
+              <span>Call Crazy!</span>
+            </button>
+          </section>
+        )}
+
+        {/* Center Baize Felt Card Table */}
+        <section
+          aria-label="Game table"
+          className="felt-table relative flex-1 min-h-[270px] sm:min-h-[320px] rounded-3xl border border-parlor-border p-4 sm:p-6 flex flex-col justify-between"
+        >
+          {/* Table Top Status Strip */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {/* Turn Indicator */}
+            <div
+              className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs sm:text-sm font-semibold ${
+                isYourTurn
+                  ? 'border-brass-400 bg-brass-500 text-parlor-bg'
+                  : 'border-ivory-200/15 bg-parlor-bg/65 text-ivory-200'
+              }`}
+            >
+              <span>
+                {gameOver
+                  ? 'Match Finished'
+                  : isYourTurn
+                  ? drawCount >= 1
+                    ? 'Your Turn — Play or Pass'
+                    : 'Your Turn'
+                  : currentTurnPlayer
+                  ? `${currentTurnPlayer.username}'s Turn`
+                  : 'Waiting…'}
+              </span>
+            </div>
+
+            {/* Active Suit Indicator */}
+            {currentSuit && (
+              <div className="inline-flex items-center gap-2 rounded-full border border-ivory-200/15 bg-parlor-bg/75 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-ivory-100">
+                <span className="text-ivory-400">Active Suit</span>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-md bg-ivory-100 px-2 py-0.5 text-xs font-bold ${
+                    isRedSuit ? 'text-crimson-600' : 'text-[#181C1A]'
+                  }`}
+                >
+                  <span aria-hidden="true">{SUIT_SYMBOLS[currentSuit]}</span>
+                  <span>{SUIT_NAMES[currentSuit]}</span>
+                </span>
+              </div>
             )}
           </div>
 
-          <div className="w-8 sm:w-32" />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
-            {/* Game Board */}
-            <div className="glass-panel p-4 sm:p-6 relative overflow-hidden min-h-[300px] sm:min-h-[400px] flex flex-col">
-              <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10" />
-              <div className="flex justify-between items-center mb-4 relative z-10">
-                <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
-                  <Shield className="text-cyber-secondary" size={20} />
-                  <span className="hidden sm:inline">ACTIVE BATTLEFIELD</span>
-                  <span className="sm:hidden">BATTLEFIELD</span>
-                </h2>
-                {currentSuit && (
-                  <div className="flex items-center gap-2 text-cyber-primary">
-                    <span className="text-xs sm:text-sm font-mono">SUIT:</span>
-                    <span className="text-xl sm:text-2xl">
-                      {currentSuit === 'hearts' && '♥'}
-                      {currentSuit === 'diamonds' && '♦'}
-                      {currentSuit === 'clubs' && '♣'}
-                      {currentSuit === 'spades' && '♠'}
-                    </span>
-                  </div>
+          {/* Center Draw Deck & Discard Pile */}
+          <div className="my-5 flex items-center justify-center gap-8 sm:gap-14">
+            {/* Draw Deck */}
+            <div className="flex flex-col items-center gap-3">
+              <div className="relative">
+                {/* Stack depth layer */}
+                {deckCount > 2 && (
+                  <div
+                    aria-hidden="true"
+                    className="absolute top-1 left-1 w-24 h-[8.5rem] sm:w-28 sm:h-40 rounded-xl border border-brass-500/25 bg-parlor-feltDark"
+                  />
                 )}
+                <CardBack
+                  size="lg"
+                  count={deckCount}
+                  label={
+                    isYourTurn
+                      ? punishmentChain?.active
+                        ? `Take ${punishmentChain.amount} penalty cards`
+                        : drawCount >= 1
+                        ? 'Pass turn'
+                        : 'Draw a card from deck'
+                      : `Draw deck (${deckCount} cards)`
+                  }
+                  onClick={isYourTurn ? handleTakePunishment : undefined}
+                  disabled={!isYourTurn || loadingAction !== null}
+                />
               </div>
-              
-              <div className="flex-1 flex items-center justify-center relative z-10">
-                <div className="w-full h-full border-2 border-dashed border-white/10 rounded-xl flex items-center justify-center bg-cyber-black/20 backdrop-blur-sm">
-                  {topCard ? (
-                    <div className="text-center">
-                      <div className="mb-4">
-                        <div className="text-6xl font-bold text-white">{topCard.rank}</div>
-                        <div className="text-4xl mt-2">
-                          {topCard.suit === 'hearts' && <span className="text-cyber-warning">♥</span>}
-                          {topCard.suit === 'diamonds' && <span className="text-cyber-warning">♦</span>}
-                          {topCard.suit === 'clubs' && <span className="text-cyber-primary">♣</span>}
-                          {topCard.suit === 'spades' && <span className="text-cyber-primary">♠</span>}
-                        </div>
-                      </div>
-                      {punishmentChain?.active && (
-                        <motion.div
-                          initial={{ scale: 0.9 }}
-                          animate={{ scale: 1.1 }}
-                          transition={{ repeat: Infinity, duration: 0.5, repeatType: 'reverse' }}
-                          className="text-cyber-warning font-bold mt-4"
-                        >
-                          ⚠ PUNISHMENT CHAIN: {punishmentChain.amount} CARDS
-                        </motion.div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-center">
-                      <motion.div 
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                        className="text-6xl mb-4 opacity-50 grayscale"
-                      >
-                        🎴
-                      </motion.div>
-                      <p className="text-xl font-mono text-cyber-primary/80 uppercase tracking-wider">
-                        {isYourTurn ? '>> AWAITING_INPUT <<' : '>> SYNCHRONIZING... <<'}
-                      </p>
-                    </div>
+              <span className="text-xs font-medium text-ivory-300/80">
+                {isYourTurn && !punishmentChain?.active && drawCount === 0
+                  ? 'Tap to Draw'
+                  : 'Draw Deck'}
+              </span>
+            </div>
+
+            {/* Discard Pile */}
+            <div className="flex flex-col items-center gap-3">
+              {topCard ? (
+                <div className="relative">
+                  {pileCount > 1 && (
+                    <div
+                      aria-hidden="true"
+                      className="absolute -top-1 -left-1.5 w-24 h-[8.5rem] sm:w-28 sm:h-40 rounded-xl border border-ivory-300/40 bg-ivory-200/85 -rotate-3"
+                    />
                   )}
+                  <CardComponent card={topCard} size="lg" interactive={false} />
+                </div>
+              ) : (
+                <div className="w-24 h-[8.5rem] sm:w-28 sm:h-40 rounded-xl border-2 border-dashed border-ivory-200/25 bg-parlor-bg/25 flex flex-col items-center justify-center p-3 text-center">
+                  <span className="font-display text-2xl text-ivory-200/40" aria-hidden="true">
+                    ♠
+                  </span>
+                  <span className="mt-2 text-[11px] font-medium text-ivory-300/75 leading-snug">
+                    {isYourTurn ? 'Play any card to open' : 'Opening card'}
+                  </span>
+                </div>
+              )}
+              <span className="text-xs font-medium text-ivory-300/80">
+                Discard Pile {pileCount > 0 ? `(${pileCount})` : ''}
+              </span>
+            </div>
+          </div>
+
+          {/* Punishment Chain Banner (Inside Table Footer) */}
+          <div className="min-h-[32px] flex items-center justify-center">
+            {punishmentChain?.active ? (
+              <div
+                role="status"
+                className="inline-flex items-center gap-2 rounded-xl border border-crimson-400/50 bg-crimson-600/25 px-4 py-2 text-xs sm:text-sm font-semibold text-ivory-50"
+              >
+                <AlertTriangle className="h-4 w-4 text-crimson-400 shrink-0" aria-hidden="true" />
+                <span>
+                  Punishment Chain: +{punishmentChain.amount} cards — Counter with a matching card
+                  or take the penalty.
+                </span>
+              </div>
+            ) : (
+              <p className="text-xs text-ivory-300/65 text-center">
+                {isYourTurn
+                  ? selectedCards.length > 0
+                    ? `${selectedCards.length} ${selectedCards.length === 1 ? 'card' : 'cards'} selected — click Play to confirm.`
+                    : 'Select one card (or multiple same-suit cards with a 7) to play.'
+                  : 'Cards stay ready in your hand until your turn.'}
+              </p>
+            )}
+          </div>
+        </section>
+
+        {/* Bottom Player Hand & Controls Dock */}
+        <section aria-label="Your hand and actions" className="surface-panel p-4 sm:p-5">
+          {isFinished && !gameOver ? (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-4 px-2">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-brass-500/50 bg-brass-500/15 text-brass-400">
+                  <Trophy className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <div>
+                  <h2 className="font-display text-lg font-semibold text-ivory-100">
+                    You finished in {myRank}
+                    {getRankSuffix(myRank || 1)} place!
+                  </h2>
+                  <p className="text-sm text-ivory-400">
+                    Spectating while the remaining players complete the round.
+                  </p>
                 </div>
               </div>
             </div>
+          ) : (
+            <div className="space-y-3">
+              {/* Hand Header & Action Controls */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-ivory-300">
+                    Your Hand
+                  </h2>
+                  <span className="rounded-md border border-parlor-border bg-parlor-bg px-2 py-0.5 font-mono text-xs font-semibold text-ivory-200">
+                    {yourCards.length}
+                  </span>
 
-            {/* Player Hand */}
-            <div className="glass-panel p-4 sm:p-6">
-              <div className="flex justify-between items-center mb-2 sm:mb-4">
-                <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
-                  <span className="text-cyber-primary">///</span>
-                  <span className="hidden sm:inline">YOUR HAND</span>
-                  <span className="sm:hidden">HAND</span>
-                  <span className="text-gray-500 text-xs sm:text-sm font-mono">({yourCards.length})</span>
-                  {selectedCards.length > 0 && (
-                    <span className="hidden sm:inline text-cyber-accent text-sm font-mono animate-pulse">
-                      [{selectedCards.length} SELECTED]
+                  <button
+                    type="button"
+                    onClick={cycleSortMode}
+                    className="btn-ghost px-2.5 py-1 text-xs min-h-[32px]"
+                    title="Change hand sorting"
+                  >
+                    <ArrowDownUp className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>
+                      Sort: {sortMode === 'suit' ? 'Suit' : sortMode === 'rank' ? 'Rank' : 'Dealt'}
                     </span>
+                  </button>
+
+                  {selectedCards.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearSelection}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-ivory-400 hover:text-ivory-100 transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>Clear ({selectedCards.length})</span>
+                    </button>
                   )}
-                </h2>
-                
-                {isYourTurn && (
-                  <div className="flex gap-1 sm:gap-2">
-                    <button
-                      onClick={handleTakePunishment}
-                      disabled={loadingAction !== null}
-                      className={`btn-secondary px-2 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm flex items-center gap-1 sm:gap-2 ${
-                        punishmentChain?.active 
-                          ? 'border-cyber-warning text-cyber-warning hover:bg-cyber-warning/10' 
-                          : drawCount === 1
-                          ? 'border-cyber-accent text-cyber-accent hover:bg-cyber-accent/10'
-                          : ''
-                      } ${loadingAction !== null ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      title={
-                        punishmentChain?.active 
-                          ? `Take ${punishmentChain.amount} Punishment Cards (you stay)` 
-                          : drawCount === 1 
-                          ? 'Pass turn to next player' 
-                          : 'Draw 1 Card (you stay)'
-                      }
-                    >
-                      {loadingAction === 'punish' ? (
-                        <div className="animate-spin h-3 w-3 sm:h-4 sm:w-4 border-2 border-current border-t-transparent rounded-full" />
-                      ) : (
-                        <Hand size={14} className="sm:w-4 sm:h-4" />
-                      )}
-                      <span className="hidden sm:inline">
-                        {punishmentChain?.active 
-                          ? `TAKE (${punishmentChain.amount})` 
-                          : drawCount === 1 
-                          ? 'PASS' 
-                          : 'DRAW'}
-                      </span>
-                    </button>
-                    <button
-                      onClick={handleCallCrazy}
-                      disabled={loadingAction !== null}
-                      className={`btn-secondary px-2 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm flex items-center gap-1 sm:gap-2 border-cyber-warning text-cyber-warning hover:bg-cyber-warning/10 ${loadingAction !== null ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      title="Call Crazy"
-                    >
-                      {loadingAction === 'crazy' ? (
-                        <div className="animate-spin h-3 w-3 sm:h-4 sm:w-4 border-2 border-current border-t-transparent rounded-full" />
-                      ) : (
-                        <AlertTriangle size={14} className="sm:w-4 sm:h-4" />
-                      )}
-                      <span className="hidden sm:inline">CRAZY</span>
-                    </button>
-                    <button
-                      onClick={handlePlayCards}
-                      disabled={selectedCards.length === 0 || loadingAction !== null}
-                      className="btn-primary px-2 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm flex items-center gap-1 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Play Selected Cards"
-                    >
-                      {loadingAction === 'play' ? (
-                        <div className="animate-spin h-3 w-3 sm:h-4 sm:w-4 border-2 border-current border-t-transparent rounded-full" />
-                      ) : (
-                        <Play size={14} className="sm:w-4 sm:h-4" />
-                      )}
-                      <span className="hidden sm:inline">PLAY</span>
-                    </button>
-                  </div>
-                )}
+                </div>
+
+                {/* Turn Action Buttons */}
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={handleTakePunishment}
+                    disabled={!isYourTurn || loadingAction !== null}
+                    className={`flex-1 sm:flex-none px-4 py-2.5 text-sm ${
+                      punishmentChain?.active ? 'btn-danger' : 'btn-secondary'
+                    }`}
+                  >
+                    {loadingAction === 'punish' ? (
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    ) : drawCount >= 1 && !punishmentChain?.active ? (
+                      <SkipForward className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <Hand className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    <span>{drawActionLabel}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePlayCards}
+                    disabled={!isYourTurn || selectedCards.length === 0 || loadingAction !== null}
+                    className="flex-1 sm:flex-none btn-primary px-5 py-2.5 text-sm"
+                  >
+                    {loadingAction === 'play' ? (
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Play className="h-4 w-4 fill-current" aria-hidden="true" />
+                    )}
+                    <span>
+                      {selectedCards.length > 1 ? `Play ${selectedCards.length} Cards` : 'Play Card'}
+                    </span>
+                  </button>
+                </div>
               </div>
-              
+
+              {/* Playing Cards Hand */}
               <CardHand
                 cards={yourCards}
                 selectedCards={selectedCards}
                 onCardClick={handleCardClick}
-                disabled={!isYourTurn}
+                disabled={!isYourTurn || loadingAction !== null}
               />
             </div>
-          </div>
+          )}
+        </section>
+      </main>
 
-          {/* Sidebar */}
-          <div className="glass-panel p-4 sm:p-6 h-fit space-y-4">
-            <PlayerList 
-              players={activePlayers} 
-              currentUserId={socket?.id}
-              currentTurn={currentTurn}
-            />
-            
-            {finishedPlayers.length > 0 && (
-              <div className="border-t border-white/10 pt-4">
-                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                  Finished ({finishedPlayers.length})
-                </h3>
-                <div className="space-y-2">
-                  {finishedPlayers.map((player) => (
-                    <div
-                      key={player.id}
-                      className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/10"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl">{player.avatar}</span>
-                        <div>
-                          <p className="text-sm font-medium text-white">{player.username}</p>
-                          <p className="text-xs text-yellow-500">
-                            {player.rank === 1 ? '🏆 Winner' : `${player.rank}${getRankSuffix(player.rank || 0)}`}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Suit Selection Modal */}
-      <SuitSelectionModal 
+      {/* Modals */}
+      <SuitSelectionModal
         isOpen={showSuitModal}
         onSelect={handleSuitSelect}
         onClose={() => {
@@ -298,39 +535,34 @@ export default function GamePage() {
         }}
       />
 
-      {/* Blunder Modal - Only shown to the player who made the blunder */}
       <BlunderModal
-        isOpen={blunderActive && blunderReason !== null && socket?.id === blunderPlayerId}
+        isOpen={isMyBlunder}
         reason={blunderReason || ''}
         timeLeft={blunderTimeLeft}
+        totalTime={blunderTotalTime}
         onRevert={handleRevertBlunder}
-        onClose={() => {}}
         isLoading={loadingAction === 'revert'}
       />
 
-      {/* Game Over Modal */}
       <GameOverModal
         isOpen={gameOver}
         rankings={rankings}
+        isCreator={isCreator}
+        currentPlayerId={playerId}
         onPlayAgain={handlePlayAgain}
         onExit={handleExitGame}
         isLoading={loadingAction === 'playAgain'}
       />
 
-      {/* Abort Game Modal */}
       <AbortGameModal
         isOpen={showAbortModal}
         isCreator={isCreator}
+        isLoading={loadingAction === 'leave'}
         onConfirm={handleConfirmLeave}
         onCancel={() => setShowAbortModal(false)}
       />
-    </main>
-  );
-}
 
-function getRankSuffix(rank: number): string {
-  if (rank === 1) return 'st';
-  if (rank === 2) return 'nd';
-  if (rank === 3) return 'rd';
-  return 'th';
+      <QuickRulesModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} />
+    </div>
+  );
 }

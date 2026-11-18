@@ -1,54 +1,44 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useGameStore } from '@/lib/store';
+import { useEffect, useRef } from 'react';
+import { WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
+import { useGameStore } from '@/lib/store';
 
 export function ConnectionManager() {
-  const { connect, isConnected } = useGameStore();
-  const [hasInitialized, setHasInitialized] = useState(false);
+  const { connect, isConnected, isRestoringSession } = useGameStore();
+  const initializedRef = useRef(false);
+  const hadConnectedOnceRef = useRef(false);
 
   useEffect(() => {
-    // Only initialize connection once
-    if (!hasInitialized) {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
       connect();
-      setHasInitialized(true);
     }
-  }, [connect, hasInitialized]);
+  }, [connect]);
 
   useEffect(() => {
-    let reconnectToastId: string | number | undefined;
-
-    if (!isConnected && hasInitialized) {
-      // Show disconnection toast
-    //   reconnectToastId = toast.loading('Reconnecting to server...', {
-    //     duration: Infinity,
-    //   });
-    } else if (isConnected && reconnectToastId) {
-      // Dismiss reconnection toast when connected
-      toast.dismiss(reconnectToastId);
-      toast.success('Connected to server');
+    if (isConnected) {
+      if (hadConnectedOnceRef.current) {
+        toast.success('Reconnected to game server', { id: 'socket-reconnect', duration: 2500 });
+      }
+      hadConnectedOnceRef.current = true;
     }
+  }, [isConnected]);
 
-    // Handle online/offline events
+  useEffect(() => {
     const handleOnline = () => {
-      console.log('📡 Network online');
-      if (!isConnected) {
+      if (!useGameStore.getState().isConnected) {
         connect();
       }
     };
 
     const handleOffline = () => {
-      console.log('📡 Network offline');
-      toast.error('Network connection lost', {
-        duration: 3000,
-      });
+      toast.error('Network connection lost', { id: 'network-offline', duration: 4000 });
     };
 
-    // Handle visibility change (tab focus)
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && !isConnected) {
-        console.log('👁️ Tab focused, checking connection');
+      if (document.visibilityState === 'visible' && !useGameStore.getState().isConnected) {
         connect();
       }
     };
@@ -62,17 +52,24 @@ export function ConnectionManager() {
       window.removeEventListener('offline', handleOffline);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isConnected, connect, hasInitialized]);
+  }, [connect]);
 
-  // Connection indicator
+  if (isConnected && !isRestoringSession) {
+    return null;
+  }
+
+  if (!hadConnectedOnceRef.current && !isRestoringSession) {
+    return null;
+  }
+
   return (
-    <div className="fixed top-4 right-4 z-50">
-      {!isConnected && hasInitialized && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-red-500/20 border border-red-500 rounded-lg backdrop-blur-md animate-pulse">
-          <div className="w-2 h-2 bg-red-500 rounded-full" />
-          <span className="text-sm text-red-200">Reconnecting...</span>
-        </div>
-      )}
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed bottom-4 right-4 z-50 flex items-center gap-2.5 rounded-xl border border-crimson-500/40 bg-parlor-elevated px-4 py-2.5 text-xs font-medium text-ivory-100 shadow-surface"
+    >
+      <WifiOff className="h-4 w-4 text-crimson-400 shrink-0" aria-hidden="true" />
+      <span>{isRestoringSession ? 'Syncing match state…' : 'Reconnecting to server…'}</span>
     </div>
   );
 }

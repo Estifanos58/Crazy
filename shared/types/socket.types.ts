@@ -1,4 +1,16 @@
-import type { Card, GameEvent, GameStateResponse, Player, RankedPlayer, RuleConfig, Suit } from './game.types';
+import type {
+  Card,
+  GameEvent,
+  GameStartedPayload,
+  GameStateResponse,
+  GameUpdatePayload,
+  Player,
+  PublicRoom,
+  RankedPlayer,
+  RuleConfig,
+  RulePresetName,
+  Suit,
+} from './game.types';
 
 export interface CreateRoomRequest {
   username: string;
@@ -10,7 +22,7 @@ export interface CreateRoomResponse {
   roomId?: string;
   playerId?: string;
   playerToken?: string;
-  room?: any;
+  room?: PublicRoom;
   error?: string;
 }
 
@@ -22,9 +34,15 @@ export interface JoinRoomRequest {
 
 export interface JoinRoomResponse {
   success: boolean;
-  room?: any;
+  room?: PublicRoom;
   playerId?: string;
   playerToken?: string;
+  error?: string;
+}
+
+export interface GetRoomResponse {
+  success: boolean;
+  room?: PublicRoom;
   error?: string;
 }
 
@@ -38,7 +56,7 @@ export interface RejoinRoomRequest {
 
 export interface RejoinRoomResponse {
   success: boolean;
-  room?: any;
+  room?: PublicRoom;
   playerId?: string;
   playerToken?: string;
   error?: string;
@@ -50,6 +68,7 @@ export interface StartGameRequest {
   playerToken?: string;
   cardsPerPlayer: number;
   customRules?: string;
+  rulePreset?: RulePresetName;
   ruleConfig?: Partial<RuleConfig>;
 }
 
@@ -77,7 +96,6 @@ export interface RevertBlunderRequest {
   roomId: string;
   playerId?: string;
   playerToken?: string;
-  cards?: Card[];
 }
 
 export interface NoRevertRequest {
@@ -91,8 +109,6 @@ export interface LeaveGameRequest {
   playerId?: string;
   playerToken?: string;
   isCreator?: boolean;
-  username?: string;
-  avatar?: string;
 }
 
 export interface PlayAgainRequest {
@@ -120,28 +136,12 @@ export interface GetGameStateResponse {
 }
 
 export interface ServerToClientEvents {
-  'player-joined': (data: { player: Player; players: Player[] }) => void;
-  'player-rejoined': (data: { player: Player; players: Player[] }) => void;
-  'player-left': (data: { username: string; avatar: string; players: Player[] }) => void;
-  'game-started': (data: {
-    roomId: string;
-    players: Player[];
-    currentTurn: string;
-    yourCards: Card[];
-    topCard?: Card;
-    currentSuit?: Suit;
-    punishmentChain?: any;
-  }) => void;
-  'game-update': (data: {
-    players: Player[];
-    finishedPlayers?: RankedPlayer[];
-    currentTurn: string;
-    topCard?: Card;
-    currentSuit?: Suit;
-    yourCards?: Card[];
-    punishmentChain?: any;
-    drawCount?: number;
-  }) => void;
+  'player-joined': (data: { player?: Player; players: Player[] }) => void;
+  'player-rejoined': (data: { player?: Player; players: Player[] }) => void;
+  'player-left': (data: { username: string; avatar: string; players: Player[]; creatorId?: string }) => void;
+  'player-disconnected': (data: { playerId: string; players: Player[] }) => void;
+  'game-started': (data: GameStartedPayload) => void;
+  'game-update': (data: GameUpdatePayload) => void;
   'game-event': (event: GameEvent) => void;
   'game-terminated': (data: { message: string }) => void;
   'game-over': (data: { rankings: RankedPlayer[] }) => void;

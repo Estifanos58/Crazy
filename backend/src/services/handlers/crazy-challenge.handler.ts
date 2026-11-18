@@ -1,4 +1,4 @@
-import type { GameState, RuleConfig, GameEvent } from '../../types/game.types';
+import type { GameEvent, GameState, RuleConfig } from '../../types/game.types';
 import { CardService } from '../card.service';
 
 /**
@@ -15,11 +15,16 @@ export class CrazyChallengeHandler {
     config: RuleConfig
   ): { updatedState: GameState; events: GameEvent[] } {
     const events: GameEvent[] = [];
-    const player = gameState.players.find(p => p.id === playerId);
+    const player = gameState.players.find((p) => p.id === playerId);
 
     if (!player) {
       throw new Error('Player not found');
     }
+
+    // Player draws penalty cards
+    const drawnCards = CardService.drawCards(gameState, config.illegalTurnPenalty);
+    player.cards.push(...drawnCards);
+    const actualDrawn = drawnCards.length;
 
     events.push({
       type: 'crazy-called',
@@ -27,18 +32,14 @@ export class CrazyChallengeHandler {
         success: true,
         callerId: calledBy,
         targetId: playerId,
-        penalty: config.illegalTurnPenalty,
+        penalty: actualDrawn,
       },
     });
 
-    // Player draws penalty cards
-    const drawnCards = CardService.drawCards(gameState, config.illegalTurnPenalty);
-    player.cards.push(...drawnCards);
-
     events.push({
       type: 'cards_drawn',
-      playerId: playerId,
-      amount: config.illegalTurnPenalty,
+      playerId,
+      amount: actualDrawn,
     });
 
     return { updatedState: gameState, events };
@@ -54,7 +55,7 @@ export class CrazyChallengeHandler {
     config: RuleConfig
   ): { updatedState: GameState; events: GameEvent[] } {
     const events: GameEvent[] = [];
-    const player = gameState.players.find(p => p.id === playerId);
+    const player = gameState.players.find((p) => p.id === playerId);
 
     if (!player) {
       throw new Error('Player not found');
@@ -63,6 +64,7 @@ export class CrazyChallengeHandler {
     const penalty = config.crazyChallenge.penalty;
     const drawnCards = CardService.drawCards(gameState, penalty);
     player.cards.push(...drawnCards);
+    const actualDrawn = drawnCards.length;
 
     if (challengedBy && challengedBy !== playerId) {
       events.push({
@@ -71,7 +73,7 @@ export class CrazyChallengeHandler {
           success: true,
           callerId: challengedBy,
           targetId: playerId,
-          penalty: penalty,
+          penalty: actualDrawn,
         },
       });
     } else {
@@ -81,15 +83,15 @@ export class CrazyChallengeHandler {
           success: false,
           callerId: playerId,
           targetId: playerId,
-          penalty: penalty,
+          penalty: actualDrawn,
         },
       });
     }
 
     events.push({
       type: 'cards_drawn',
-      playerId: playerId,
-      amount: penalty,
+      playerId,
+      amount: actualDrawn,
     });
 
     return { updatedState: gameState, events };

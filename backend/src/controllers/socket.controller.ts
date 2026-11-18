@@ -10,11 +10,14 @@ import { BlunderHandler } from './handlers/blunder.handler';
 import { NoRevertHandler } from './handlers/no-revert.handler';
 import { LeaveGameHandler } from './handlers/leave-game.handler';
 import { PlayAgainHandler } from './handlers/play-again.handler';
+import { RoomService } from '../services/room.service';
+import { GameBroadcaster } from '../services/game-broadcaster.service';
+import { logger } from '../utils/logger';
 
 export class SocketController {
   static setupSocketHandlers(io: Server): void {
     io.on('connection', (socket: Socket) => {
-      console.log(`✅ Client connected: ${socket.id}`);
+      logger.info('Client connected', { socketId: socket.id });
 
       // Room management
       CreateRoomHandler.handle(socket, io);
@@ -33,10 +36,29 @@ export class SocketController {
       // Connection management
       ReconnectionHandler.handle(socket, io);
 
-      // Handle disconnect
-      socket.on('disconnect', () => {
-        console.log(`❌ Client disconnected: ${socket.id}`);
-        // Player data is preserved in Redis for reconnection
+      // Handle disconnect: preserve room state for reconnection, mark player offline under lock
+      socket.on('disconnect', async (reason) => {
+        logger.info('Client disconnected', { socketId: socket.id, reason });
+
+        const roomId = socket.data?.roomId as string | undefined;
+        const playerId = socket.data?.playerId as string | undefined;
+        if (!roomId) return;
+
+        try {
+          const updatedRoom = await RoomService.markPlayerDisconnected(roomId, socket.id, playerId);
+          if (updatedRoom && playerId) {
+            io.to(roomId).emit('player-disconnected', {
+              playerId,
+              players: GameBroadcaster.sanitizePlayers(updatedRoom.players),
+            });
+          }
+        } catch (error) {
+          logger.warn('Failed to mark player disconnected', {
+            roomId,
+            playerId,
+            error: error instanceof Error ? error : String(error),
+          });
+        }
       });
     });
   }

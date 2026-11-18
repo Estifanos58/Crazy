@@ -1,96 +1,54 @@
 import type { Server, Socket } from 'socket.io';
 import { RoomService } from '../../services/room.service';
-import { GameOrchestrator } from '../../services/game.orchestrator';
-import type { StartGameData } from '../../types/game.types';
+import { GameBroadcaster } from '../../services/game-broadcaster.service';
+import { formatZodError, startGameSchema } from '../../validation/socket.schemas';
+import { logger } from '../../utils/logger';
+import type { RuleConfig } from '../../types/game.types';
 
 export class StartGameHandler {
   static handle(socket: Socket, io: Server): void {
-    socket.on(
-      'start-game',
-      async (
-        data: StartGameData & { playerId?: string; playerToken?: string },
-        callback
-      ) => {
-        try {
-          if (!data || !data.roomId) {
-            if (typeof callback === 'function') {
-              callback({ success: false, error: 'Invalid room ID' });
-            }
-            return;
-          }
-
-          const room = await RoomService.getRoom(data.roomId);
-          if (!room) {
-            if (typeof callback === 'function') {
-              callback({ success: false, error: 'Room not found' });
-            }
-            return;
-          }
-
-          const player = GameOrchestrator.authenticatePlayer(
-            room,
-            socket.id,
-            data.playerId,
-            data.playerToken
-          );
-
-          if (!player) {
-            if (typeof callback === 'function') {
-              callback({ success: false, error: 'Unauthorized' });
-            }
-            return;
-          }
-
-          // Strictly enforce host authorization!
-          if (room.creatorId !== player.id) {
-            if (typeof callback === 'function') {
-              callback({ success: false, error: 'Only room creator can start game' });
-            }
-            return;
-          }
-
-          if (room.players.length < 2) {
-            if (typeof callback === 'function') {
-              callback({ success: false, error: 'At least 2 players are required to start the game' });
-            }
-            return;
-          }
-
-          const updatedRoom = await RoomService.startGame(data);
-          if (!updatedRoom) {
-            if (typeof callback === 'function') {
-              callback({ success: false, error: 'Failed to start game' });
-            }
-            return;
-          }
-
-          const sanitizedPlayers = RoomService.sanitizePlayers(updatedRoom.players);
-
-          // Send private hand to each player
-          updatedRoom.players.forEach(p => {
-            const target = p.socketId || `player:${p.id}`;
-            io.to(target).emit('game-started', {
-              roomId: updatedRoom.roomId,
-              players: sanitizedPlayers,
-              currentTurn: updatedRoom.currentTurn,
-              yourCards: p.cards,
-              topCard: undefined,
-              currentSuit: undefined,
-              punishmentChain: updatedRoom.punishmentChain,
-            });
-          });
-
+    socket.on('start-game', async (rawPayload: unknown, callback) => {
+      try {
+        const parsed = startGameSchema.safeParse(rawPayload);
+        if (!parsed.success) {
           if (typeof callback === 'function') {
-            callback({ success: true });
+            callback({ success: false, error: formatZodError(parsed.error) });
           }
-          console.log(`🎮 Game started in room: ${data.roomId} by ${player.username}`);
-        } catch (error) {
-          console.error('Error starting game:', error);
-          if (typeof callback === 'function') {
-            callback({ success: false, error: (error as Error).message });
-          }
+          return;
+        }
+
+        const data = parsed.data;
+        const { room, starter } = await RoomService.startGameAuthorized(socket.id, {
+          roomId: data.roomId,
+          playerId: data.playerId,
+          playerToken: data.playerToken,
+          cardsPerPlayer: data.cardsPerPlayer,
+          customRules: data.customRules,
+          rulePreset: data.rulePreset,
+          ruleConfig: data.ruleConfig as Partial<RuleConfig> | undefined,
+        });
+
+        GameBroadcaster.broadcastGameStarted(room, io);
+
+        if (typeof callback === 'function') {
+          callback({ success: true });
+        }
+
+        logger.info('Game started', {
+          roomId: room.roomId,
+          startedBy: starter.id,
+          playerCount: room.players.length,
+          cardsPerPlayer: room.rules?.cardsPerPlayer,
+        });
+      } catch (error) {
+        logger.warn('Error starting game', {
+          socketId: socket.id,
+          error: error instanceof Error ? error : String(error),
+        });
+        if (typeof callback === 'function') {
+          callback({ success: false, error: (error as Error).message });
         }
       }
-    );
+    });
   }
 }

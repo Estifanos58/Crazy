@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { AlertTriangle, Undo2, Timer } from 'lucide-react';
+import React from 'react';
+import { AlertTriangle, Clock, Loader2, Undo2 } from 'lucide-react';
+import Modal from './Modal';
 
 interface BlunderModalProps {
   isOpen: boolean;
   reason: string;
   timeLeft: number;
+  totalTime?: number;
   onRevert: () => void;
-  onClose: () => void;
   isLoading?: boolean;
 }
 
@@ -17,139 +17,78 @@ export default function BlunderModal({
   isOpen,
   reason,
   timeLeft,
+  totalTime = 5,
   onRevert,
-  onClose,
   isLoading = false,
 }: BlunderModalProps) {
-  const [countdown, setCountdown] = useState(timeLeft);
-  const shouldReduceMotion = useReducedMotion();
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    setCountdown(timeLeft);
-    
-    const interval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 0) {
-          clearInterval(interval);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isOpen, timeLeft]);
-
-  const progress = (countdown / timeLeft) * 100;
+  const safeTotal = Math.max(1, totalTime);
+  const progressPct = Math.max(0, Math.min(100, (timeLeft / safeTotal) * 100));
+  const canRevert = timeLeft > 0;
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-        >
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0, y: 20 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            transition={{ duration: shouldReduceMotion ? 0 : 0.3 }}
-            className="relative w-full max-w-md bg-gradient-to-br from-red-900/40 to-gray-900/40 border-2 border-red-500/50 rounded-2xl p-6 backdrop-blur-xl shadow-2xl will-change-transform"
-          >
-            {/* Warning Icon */}
-            <div className="flex justify-center mb-4">
-              <motion.div
-                animate={shouldReduceMotion ? {} : { 
-                  rotate: [0, -10, 10, -10, 10, 0],
-                  scale: [1, 1.1, 1]
-                }}
-                transition={{ 
-                  duration: 0.5,
-                  repeat: Infinity,
-                  repeatDelay: 1
-                }}
-                className="p-4 bg-red-500/20 rounded-full"
-              >
-                <AlertTriangle className="w-12 h-12 text-red-500" />
-              </motion.div>
-            </div>
-
-            {/* Title */}
-            <h2 className="text-2xl font-bold text-center text-red-400 mb-2">
-              Invalid Move!
-            </h2>
-
-            {/* Reason */}
-            <p className="text-center text-gray-300 mb-6">
-              {reason}
+    <Modal
+      isOpen={isOpen}
+      onClose={() => {}}
+      title="Illegal Move Detected"
+      dismissible={false}
+      maxWidthClass="max-w-md"
+    >
+      <div className="space-y-5">
+        <div className="flex items-start gap-3 rounded-xl border border-crimson-500/35 bg-crimson-500/10 p-4">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-crimson-400 mt-0.5" aria-hidden="true" />
+          <div className="space-y-1 text-sm">
+            <p className="font-medium text-ivory-100">{reason}</p>
+            <p className="text-ivory-400">
+              Revert before another player calls Crazy to avoid drawing penalty cards.
             </p>
+          </div>
+        </div>
 
-            {/* Timer */}
-            <div className="mb-6">
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <Timer className="w-5 h-5 text-yellow-400" />
-                <span className="text-2xl font-bold text-yellow-400">
-                  {countdown}s
-                </span>
-              </div>
-              
-              {/* Progress Bar */}
-              <div className="relative h-2 bg-gray-700 rounded-full overflow-hidden">
-                <motion.div
-                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-yellow-400 to-red-500"
-                  initial={{ width: '100%' }}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs font-medium">
+            <span className="inline-flex items-center gap-1.5 text-ivory-400">
+              <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+              {canRevert ? 'Revert window remaining' : 'Revert window closed'}
+            </span>
+            <span className="font-mono text-sm font-semibold text-brass-300">
+              {Math.max(0, timeLeft)}s
+            </span>
+          </div>
 
-                  animate={{ width: `${progress}%` }}
-                  transition={{ duration: 1, ease: 'linear' }}
-                />
-              </div>
-            </div>
+          <div
+            role="progressbar"
+            aria-valuenow={Math.max(0, timeLeft)}
+            aria-valuemin={0}
+            aria-valuemax={safeTotal}
+            className="h-2 w-full overflow-hidden rounded-full bg-parlor-bg border border-parlor-border"
+          >
+            <div
+              className="h-full bg-brass-500 transition-[width] duration-700 ease-linear"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        </div>
 
-            {/* Warning Text */}
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-6">
-              <p className="text-sm text-red-300 text-center">
-                ⚠️ Other players can call "Crazy" on you!
-                <br />
-                <span className="text-xs text-gray-400">
-                  If challenged, you'll draw 2 punishment cards
-                </span>
-              </p>
-            </div>
+        <button
+          type="button"
+          onClick={onRevert}
+          disabled={!canRevert || isLoading}
+          className="w-full btn-primary"
+        >
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Undo2 className="h-4 w-4" aria-hidden="true" />
+          )}
+          <span>{isLoading ? 'Reverting…' : 'Revert Move'}</span>
+        </button>
 
-            {/* Revert Button */}
-            <button
-              onClick={onRevert}
-              disabled={countdown === 0 || isLoading}
-              className={`w-full py-3 rounded-lg font-bold text-white transition-all duration-200 flex items-center justify-center gap-2 ${
-                countdown === 0 || isLoading
-                  ? 'bg-gray-600 cursor-not-allowed opacity-50'
-                  : 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 hover:scale-105 active:scale-95 shadow-lg hover:shadow-yellow-500/50'
-              }`}
-            >
-              {isLoading ? (
-                <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
-              ) : (
-                <Undo2 className="w-5 h-5" />
-              )}
-              {isLoading ? 'Reverting...' : 'Revert Move'}
-            </button>
-
-            {countdown === 0 && (
-              <motion.p
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-center text-red-400 mt-3 text-sm"
-              >
-                Too late! Waiting for challenge...
-              </motion.p>
-            )}
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        {!canRevert && (
+          <p className="text-center text-xs text-ivory-400">
+            Waiting for the server timer or an opponent challenge to resolve…
+          </p>
+        )}
+      </div>
+    </Modal>
   );
 }

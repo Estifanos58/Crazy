@@ -1,4 +1,5 @@
-import type { GameState, RuleConfig, Card } from '../../types/game.types';
+import type { Card, GameState, RuleConfig } from '../../types/game.types';
+import { matchesAnyCardSelector, matchesCardSelector } from '../../utils/card-selector';
 
 /**
  * MoveValidator - Authoritative move validation logic
@@ -25,7 +26,7 @@ export class MoveValidator {
     }
 
     // Check if player exists
-    const player = gameState.players.find(p => p.id === playerId);
+    const player = gameState.players.find((p) => p.id === playerId);
     if (!player) {
       return { valid: false, errors: ['Player not found'], canChallengeCrazy: false };
     }
@@ -50,7 +51,7 @@ export class MoveValidator {
     // Validate cards are strictly in player's authoritative server hand
     for (const card of cards) {
       const cardInHand = player.cards.find(
-        c => c.id === card.id && c.rank === card.rank && c.suit === card.suit
+        (c) => c.id === card.id && c.rank === card.rank && c.suit === card.suit
       );
       if (!cardInHand) {
         errors.push(`Card ${card.rank} of ${card.suit} not in your hand`);
@@ -84,45 +85,42 @@ export class MoveValidator {
   }
 
   /**
-   * Check if cards can respond to punishment
+   * Check if cards can respond to an active punishment chain
    */
   private static canRespondToPunishment(
-    cards: Card[], 
+    cards: Card[],
     config: RuleConfig,
     gameState: GameState
   ): boolean {
     if (cards.length !== 1) return false;
-    
+
     const card = cards[0];
     const punishmentCards = gameState.punishmentChain.cards;
     const lastPunishmentCard = punishmentCards[punishmentCards.length - 1];
 
     if (!lastPunishmentCard) return false;
 
-    // Check if it's A♠ (can respond to 2♠)
+    const aceSelector = config.punishment.aceSpadeCard;
+    const isCardAcePunisher =
+      config.punishment.aceSpadePenalty > 0 && matchesCardSelector(card, aceSelector);
+    const isLastAcePunisher = matchesCardSelector(lastPunishmentCard, aceSelector);
+    const aceSuit = aceSelector.suit;
+
+    // A♠ (or configured special punisher) can respond to a rank-2 of the matching suit
     if (
-      card.rank === config.punishment.aceSpadeCard.rank && 
-      card.suit === config.punishment.aceSpadeCard.suit && 
-      config.punishment.rank2Cards.includes(lastPunishmentCard.rank) && 
-      lastPunishmentCard.suit === 'spades'
+      isCardAcePunisher &&
+      config.punishment.rank2Cards.includes(lastPunishmentCard.rank) &&
+      (!aceSuit || lastPunishmentCard.suit === aceSuit)
     ) {
       return true;
     }
 
-    // Check if it's a 2
-    if (config.punishment.rank2Cards.includes(card.rank)) {
-      if (punishmentCards.length > 0) {
-        // If punishment started with A♠, 2 of spades can respond
-        if (
-          lastPunishmentCard.rank === config.punishment.aceSpadeCard.rank &&
-          lastPunishmentCard.suit === config.punishment.aceSpadeCard.suit
-        ) {
-          return card.suit === 'spades';
-        }
-        // Otherwise, 2 must match the suit of the last punishment card
-        return card.suit === lastPunishmentCard.suit;
+    // Check if it's a rank-2 punishment card
+    if (config.punishment.rank2Penalty > 0 && config.punishment.rank2Cards.includes(card.rank)) {
+      if (isLastAcePunisher) {
+        return !aceSuit || card.suit === aceSuit;
       }
-      return true;
+      return card.suit === lastPunishmentCard.suit;
     }
 
     return false;
@@ -130,10 +128,10 @@ export class MoveValidator {
 
   /**
    * Validate multiple cards play
-   * Per rules: 
+   * Per rules:
    * 1) All cards must have same suit
-   * 2) The suit must match the current playing suit
-   * 3) Must have a drop card (7) present
+   * 2) The suit must match the current playing suit (if pile is non-empty)
+   * 3) Must have a drop card (default: 7) matching dropCards selector
    */
   private static validateMultipleCards(
     cards: Card[],
@@ -148,23 +146,21 @@ export class MoveValidator {
       };
     }
 
-    // Must have a drop card (7) per rules
-    const hasDropCard = cards.some(c => 
-      c.rank === config.specialCards.dropCards.rank
-    );
+    // Must have a drop card matching selector (both rank and optional suit)
+    const hasDropCard = cards.some((c) => matchesCardSelector(c, config.specialCards.dropCards));
 
     if (!hasDropCard) {
       return {
         valid: false,
-        errors: ['Multiple cards require a drop card (7)'],
+        errors: [`Multiple cards require a drop card (${config.specialCards.dropCards.rank})`],
         canChallengeCrazy: config.crazyChallenge.enabled,
       };
     }
 
     // All must be same suit
     const firstSuit = cards[0].suit;
-    const allSameSuit = cards.every(c => c.suit === firstSuit);
-    
+    const allSameSuit = cards.every((c) => c.suit === firstSuit);
+
     if (!allSameSuit) {
       return {
         valid: false,
@@ -173,7 +169,7 @@ export class MoveValidator {
       };
     }
 
-    // The suits of the thrown cards must match the current playing suit
+    // The suit of the thrown cards must match the current playing suit
     if (gameState.pile.length > 0 && firstSuit !== gameState.currentSuit) {
       return {
         valid: false,
@@ -202,10 +198,8 @@ export class MoveValidator {
     const matchesSuit = card.suit === gameState.currentSuit;
     const matchesRank = card.rank === topCard.rank;
 
-    // Suit change cards can always be played
-    const isSuitChangeCard = config.specialCards.suitChangeCards.some(sc => 
-      sc.rank === card.rank && (!sc.suit || sc.suit === card.suit)
-    );
+    // Suit change cards can always be played (matching both rank and optional suit)
+    const isSuitChangeCard = matchesAnyCardSelector(card, config.specialCards.suitChangeCards);
 
     if (!matchesSuit && !matchesRank && !isSuitChangeCard) {
       return {

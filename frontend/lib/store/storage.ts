@@ -1,59 +1,67 @@
-import type { GameStore } from './types';
+export interface SavedSession {
+  roomId: string;
+  playerId: string;
+  playerToken: string;
+  username: string;
+  avatar: string;
+}
 
-const STORAGE_KEY = 'crazy-game-state';
+const STORAGE_KEY = 'crazy-game-session';
+const LEGACY_STORAGE_KEY = 'crazy-game-state';
 
 /**
- * Save game state to sessionStorage
+ * Save minimal session identity to sessionStorage.
+ * Authoritative game state (cards, turn, pile) is ALWAYS synchronized from the server.
  */
-export const saveStateToStorage = (state: Partial<GameStore>) => {
+export const saveSessionToStorage = (session: Partial<SavedSession>) => {
   if (typeof window === 'undefined') return;
+  if (!session.roomId || !session.playerId || !session.playerToken) return;
+
   try {
-    const stateToSave = {
-      username: state.username,
-      avatar: state.avatar,
-      playerId: state.playerId,
-      playerToken: state.playerToken,
-      roomId: state.roomId,
-      isCreator: state.isCreator,
-      creatorId: state.creatorId,
-      gameStarted: state.gameStarted,
-      yourCards: state.yourCards,
-      currentTurn: state.currentTurn,
-      currentSuit: state.currentSuit,
-      topCard: state.topCard,
-      punishmentChain: state.punishmentChain,
-      players: state.players,
-      activePlayers: state.activePlayers,
-      finishedPlayers: state.finishedPlayers,
-      gameOver: state.gameOver,
-      lastPlayerId: state.lastPlayerId,
-      isFinished: state.isFinished,
-      myRank: state.myRank,
+    const payload: SavedSession = {
+      roomId: session.roomId,
+      playerId: session.playerId,
+      playerToken: session.playerToken,
+      username: session.username || '',
+      avatar: session.avatar || '',
     };
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    sessionStorage.removeItem(LEGACY_STORAGE_KEY);
   } catch (error) {
-    console.error('Failed to save state:', error);
+    console.error('Failed to save session:', error);
   }
 };
 
 /**
- * Restore game state from sessionStorage
+ * Restore session identity from sessionStorage.
  */
-export const restoreStateFromStorage = (): Partial<GameStore> | null => {
+export const restoreSessionFromStorage = (): SavedSession | null => {
   if (typeof window === 'undefined') return null;
   try {
-    const saved = sessionStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : null;
+    const raw = sessionStorage.getItem(STORAGE_KEY) || sessionStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<SavedSession>;
+    if (!parsed.roomId || !parsed.playerId || !parsed.playerToken) {
+      return null;
+    }
+    return {
+      roomId: parsed.roomId,
+      playerId: parsed.playerId,
+      playerToken: parsed.playerToken,
+      username: parsed.username || '',
+      avatar: parsed.avatar || '',
+    };
   } catch (error) {
-    console.error('Failed to restore state:', error);
+    console.error('Failed to restore session:', error);
     return null;
   }
 };
 
 /**
- * Clear game state from sessionStorage
+ * Clear saved session from sessionStorage.
  */
-export const clearStateFromStorage = () => {
+export const clearSessionFromStorage = () => {
   if (typeof window === 'undefined') return;
   sessionStorage.removeItem(STORAGE_KEY);
+  sessionStorage.removeItem(LEGACY_STORAGE_KEY);
 };
