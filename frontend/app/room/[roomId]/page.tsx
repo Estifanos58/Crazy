@@ -51,7 +51,7 @@ const RULE_PRESETS: { id: RulePresetName; label: string; description: string }[]
 ];
 
 function formatRoomCode(code: string): string {
-  if (code.length === 6 && /^\d+$/.test(code)) {
+  if (code.length === 6 && /^[a-zA-Z0-9]+$/.test(code)) {
     return `${code.slice(0, 3)} ${code.slice(3)}`;
   }
   return code;

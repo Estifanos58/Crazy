@@ -67,7 +67,8 @@ export class GameStateManager {
 
   /**
    * Advance `steps` active players from `fromPlayerId` in `direction` (default: state.turnDirection).
-   * Correctly handles finished players (cards.length === 0) without skipping active players!
+   * When `winOnEmpty` is true (default), skips players who have 0 cards.
+   * When `winOnEmpty` is false, all players in `state.players` remain active in turn order.
    */
   static getNextActivePlayerFrom(
     state: GameState,
@@ -77,7 +78,11 @@ export class GameStateManager {
   ): string {
     if (state.players.length === 0) return '';
 
-    const activePlayers = state.players.filter((p) => p.cards.length > 0);
+    const winOnEmpty = state.ruleConfig?.winOnEmpty ?? true;
+    const isActive = (p: GameState['players'][number]) =>
+      winOnEmpty ? p.cards.length > 0 : p.finishedAt === undefined;
+
+    const activePlayers = state.players.filter(isActive);
     if (activePlayers.length === 0) {
       return state.players[0].id;
     }
@@ -96,7 +101,7 @@ export class GameStateManager {
     while (remainingSteps > 0 && safety < maxIterations) {
       cursor = (cursor + direction + state.players.length) % state.players.length;
       safety += 1;
-      if (state.players[cursor].cards.length > 0) {
+      if (isActive(state.players[cursor])) {
         remainingSteps -= 1;
       }
     }

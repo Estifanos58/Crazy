@@ -9,12 +9,14 @@ All match state lives in Redis under `room:<roomId>` with a 4-hour TTL. Clients 
 - **`SessionAuthService`**: Verifies persistent credentials (`playerId`, `playerToken`) using `crypto.timingSafeEqual`. Never falls back to `socket.id` if explicit credentials are supplied and invalid.
 - **`RoomLockService`**: Protects every room mutation (`joinRoom`, `startGame`, `rejoinRoom`, `playCard`, `takePunishment`, `revertBlunder`, `callCrazy`, `handleBlunderTimeout`, `leaveGame`, `playAgain`, `markPlayerDisconnected`).
   - Chains in-process promises per `roomId` and cleans up finished queue entries immediately.
-  - Acquires Redis distributed locks via `SET lock:room:<roomId> <token> NX PX <ttl>`.
-  - Extends TTL periodically via Lua `pexpire` while a task executes.
+  - Acquires Redis distributed locks via `SET lock:room:<roomId> <token> NX PX <ttl>` and mints a monotonic fencing token (`INCR lock:fence:<roomId>`).
+  - Extends TTL periodically via Lua `pexpire` while a task executes; if renewal fails, marks the lock context lost (`LockLostError`).
+  - Enforces atomic Lua conditional writes (`SAVE_ROOM_FENCED` / `DELETE_ROOM_FENCED`) verifying both lock ownership AND monotonic fencing token before persisting room mutations so stale owners cannot overwrite newer state.
   - Releases safely via Lua compare-and-delete.
   - Throws `LockAcquisitionError` on contention timeout or Redis error — tasks **never** execute without a valid lock.
-- **`RoomService`**: Enforces strict lifecycle transitions (`lobby` → `playing` → `finished`) and prevents username-based session takeover on reconnection.
-- **`BlunderService`**: Holds illegal plays in server escrow (`room.blunderState`) to prevent card duplication. Enforces revert (5s) and challenge (8s) windows on the server and schedules an authoritative timeout timer. Client `no-revert` events are unconditionally rejected.
+- **`RoomService`**: Enforces strict lifecycle transitions (`lobby` → `playing` → `finished`), allocates 6-character unambiguous room IDs atomically with `SET NX EX` (preventing collisions and overwrites), and prevents username-based session takeover on reconnection.
+- **`BlunderService`**: Holds illegal plays in server escrow (`room.blunderState`) to prevent card duplication. Persists blunder deadlines in a Redis Sorted Set (`blunder:deadlines`) with startup recovery and periodic idempotent sweeping under room lock so blunder timeouts survive backend restarts. Client `no-revert` events are unconditionally rejected.
+- **`RateLimitService`**: Redis-backed atomic Lua fixed-window rate limits protecting Socket.IO handshakes, per-IP concurrent connections (`MAX_CONNECTIONS_PER_IP`), room creation/joining, anti-enumeration `get-room` miss throttling, failed `rejoin-room` auth throttling, and gameplay events.
 - **`GameBroadcaster`**: Single sanitizer responsible for building public room views (`PublicRoom`), player-specific authoritative states (`GameStateResponse`), and per-player broadcasts (`game-started`, `game-update`), ensuring opponent hands and session tokens are never exposed.
 - **`GameOrchestrator`**: Coordinates core turn actions (`playCard`, `takePunishment`, `leaveGame`, `playAgain`).
 
@@ -23,8 +25,9 @@ All match state lives in Redis under `room:<roomId>` with a 4-hour TTL. Clients 
 ## 2. Health Checks & Observability
 
 - `GET /health` & `GET /health/live`: Process liveness probe (`200 OK`).
-- `GET /health/ready`: Readiness probe actively executing `PING` against Redis (`200 OK` when ready, `503 Service Unavailable` when required Redis is unreachable).
-- **Structured Logging**: JSON log lines via `utils/logger.ts` with automatic redaction of sensitive keys (`playerToken`, `token`, `cards`, `yourCards`, `password`).
+- `GET /health/ready`: Readiness probe actively executing `PING` against Redis (`200 OK` with store mode, active connections, and pending blunder timers when ready; `503 Service Unavailable` when required Redis is unreachable).
+- `GET /metrics`: Operational metrics in Prometheus exposition format (`Accept: application/json` returns JSON; optionally protected with `Authorization: Bearer <METRICS_TOKEN>`).
+- **Structured Logging**: JSON log lines via `utils/logger.ts` with `pid` metadata and automatic redaction of sensitive keys (`playerToken`, `token`, `lockToken`, `cards`, `yourCards`, `password`).
 
 ---
 

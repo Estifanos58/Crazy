@@ -6,3 +6,7 @@ out
 !.env.local.example
 *.log
 coverage
+__tests__
+e2e
+playwright-report
+test-results

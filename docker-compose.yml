@@ -26,9 +26,12 @@ services:
     environment:
       PORT: 3001
       REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379}
-      REDIS_REQUIRED: ${REDIS_REQUIRED:-true}
+      REDIS_REQUIRED: "true"
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      MAX_CONNECTIONS_PER_IP: ${MAX_CONNECTIONS_PER_IP:-25}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
       NODE_ENV: production
     depends_on:
       redis:

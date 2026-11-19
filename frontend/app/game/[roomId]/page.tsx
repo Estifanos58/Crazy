@@ -25,7 +25,7 @@ import { useGameLogic } from '@/hooks/useGameLogic';
 import type { SortMode } from '@/hooks/useGameLogic';
 
 function formatRoomCode(code: string): string {
-  if (code.length === 6 && /^\d+$/.test(code)) {
+  if (code.length === 6 && /^[a-zA-Z0-9]+$/.test(code)) {
     return `${code.slice(0, 3)} ${code.slice(3)}`;
   }
   return code;

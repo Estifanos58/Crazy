@@ -1,4 +1,5 @@
 import type { Server } from 'socket.io';
+import redisService from '../config/redis';
 import { RoomService } from './room.service';
 import { RuleService } from './rule.service';
 import { CardService } from './card.service';
@@ -6,14 +7,177 @@ import { RoomLockService } from './lock.service';
 import { TimerService } from './timer.service';
 import { SessionAuthService } from './session-auth.service';
 import { GameBroadcaster } from './game-broadcaster.service';
+import { logger } from '../utils/logger';
+import { metrics } from '../utils/metrics';
 import type { Card, GameEvent, GameRoom, ServerPlayer } from '../types/game.types';
 
 export const DEFAULT_REVERT_TIMEOUT_MS = 5000;
 export const DEFAULT_CHALLENGE_TIMEOUT_MS = 8000;
+export const BLUNDER_DEADLINES_KEY = 'blunder:deadlines';
 
 export class BlunderService {
+  private static sweepInterval: NodeJS.Timeout | null = null;
+  private static sweepInFlight = false;
+
   /**
-   * Record a blunder in room state (caller MUST hold room lock) and schedule server-side expiration timer.
+   * Record a durable blunder deadline in Redis ZSET so expiration survives backend restarts.
+   */
+  static async persistDeadline(roomId: string, expiresAtMs: number): Promise<void> {
+    await redisService.zAdd(BLUNDER_DEADLINES_KEY, expiresAtMs, roomId);
+    metrics.inc('blunders_scheduled_total');
+  }
+
+  /**
+   * Remove a room's durable blunder deadline from Redis ZSET and cancel any local timer.
+   */
+  static async clearDeadline(roomId: string): Promise<void> {
+    TimerService.clearRoomTimers(roomId);
+    try {
+      await redisService.zRem(BLUNDER_DEADLINES_KEY, roomId);
+    } catch (error) {
+      logger.warn('Failed to clear durable blunder deadline', {
+        roomId,
+        error: error instanceof Error ? error : String(error),
+      });
+    }
+  }
+
+  /**
+   * Recover durable blunder deadlines from Redis after a restart (or sweep due entries).
+   * - Already-expired deadlines are resolved idempotently under room lock.
+   * - Future deadlines get local timers scheduled for prompt execution.
+   */
+  static async recoverDeadlines(io?: Server): Promise<{
+    recoveredDue: number;
+    rescheduledFuture: number;
+  }> {
+    const entries = await redisService.zRangeByScoreWithScores(
+      BLUNDER_DEADLINES_KEY,
+      '-inf',
+      '+inf'
+    );
+    const now = Date.now();
+    let recoveredDue = 0;
+    let rescheduledFuture = 0;
+
+    for (const entry of entries) {
+      const roomId = entry.value;
+      const expiresAt = entry.score;
+
+      if (expiresAt <= now) {
+        try {
+          const result = await this.handleBlunderTimeout(roomId, io);
+          if (result.resolved) {
+            recoveredDue += 1;
+            metrics.inc('blunders_recovered_total');
+          }
+        } catch (error) {
+          logger.warn('Error recovering due blunder deadline', {
+            roomId,
+            error: error instanceof Error ? error : String(error),
+          });
+        }
+      } else {
+        const delayMs = Math.max(25, expiresAt - now + 25);
+        TimerService.setTimer(`blunder:${roomId}`, delayMs, async () => {
+          await BlunderService.handleBlunderTimeout(roomId, io);
+        });
+        rescheduledFuture += 1;
+      }
+    }
+
+    if (recoveredDue > 0 || rescheduledFuture > 0) {
+      logger.info('Recovered durable blunder deadlines', {
+        recoveredDue,
+        rescheduledFuture,
+      });
+    }
+
+    return { recoveredDue, rescheduledFuture };
+  }
+
+  /**
+   * Process any due blunder deadlines (called periodically by the background sweeper).
+   */
+  static async sweepDueDeadlines(io?: Server): Promise<number> {
+    if (this.sweepInFlight) return 0;
+    this.sweepInFlight = true;
+    let resolvedCount = 0;
+
+    try {
+      const dueEntries = await redisService.zRangeByScoreWithScores(
+        BLUNDER_DEADLINES_KEY,
+        '-inf',
+        Date.now()
+      );
+
+      for (const entry of dueEntries) {
+        try {
+          const result = await this.handleBlunderTimeout(entry.value, io);
+          if (result.resolved) {
+            resolvedCount += 1;
+          }
+        } catch (error) {
+          logger.warn('Error processing due blunder deadline during sweep', {
+            roomId: entry.value,
+            error: error instanceof Error ? error : String(error),
+          });
+        }
+      }
+    } catch (error) {
+      logger.warn('Blunder deadline sweep failed', {
+        error: error instanceof Error ? error : String(error),
+      });
+    } finally {
+      this.sweepInFlight = false;
+    }
+
+    return resolvedCount;
+  }
+
+  /**
+   * Start durable deadline recovery & periodic sweeper on backend boot.
+   */
+  static startRecoverySweeper(io?: Server, intervalMs = 1000): void {
+    this.stopRecoverySweeper();
+
+    void this.recoverDeadlines(io).catch((error) => {
+      logger.error('Initial blunder deadline recovery failed', {
+        error: error instanceof Error ? error : String(error),
+      });
+    });
+
+    this.sweepInterval = setInterval(() => {
+      void this.sweepDueDeadlines(io);
+    }, intervalMs);
+
+    if (typeof this.sweepInterval.unref === 'function') {
+      this.sweepInterval.unref();
+    }
+  }
+
+  static stopRecoverySweeper(): void {
+    if (this.sweepInterval) {
+      clearInterval(this.sweepInterval);
+      this.sweepInterval = null;
+    }
+  }
+
+  static async getPendingDeadlineCount(): Promise<number> {
+    try {
+      const entries = await redisService.zRangeByScoreWithScores(
+        BLUNDER_DEADLINES_KEY,
+        '-inf',
+        '+inf'
+      );
+      return entries.length;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Record a blunder in room state (caller MUST hold room lock) and schedule a durable deadline.
    */
   static async registerBlunderUnlocked(
     room: GameRoom,
@@ -35,6 +199,8 @@ export class BlunderService {
 
     const revertTimeoutMs = timeouts?.revertTimeoutMs ?? DEFAULT_REVERT_TIMEOUT_MS;
     const challengeTimeoutMs = timeouts?.challengeTimeoutMs ?? DEFAULT_CHALLENGE_TIMEOUT_MS;
+    const now = Date.now();
+    const expiresAt = now + challengeTimeoutMs;
 
     room.blunderState = {
       active: true,
@@ -42,15 +208,15 @@ export class BlunderService {
       cards,
       reason,
       penalty: ruleConfig.illegalTurnPenalty,
-      timestamp: Date.now(),
+      timestamp: now,
       revertTimeoutMs,
       challengeTimeoutMs,
     };
 
     await RoomService.saveRoom(room);
+    await this.persistDeadline(room.roomId, expiresAt);
 
-    // Schedule authoritative server-controlled timer slightly past challengeTimeoutMs
-    // so elapsed >= challengeTimeoutMs is strictly satisfied when the timer fires
+    // Local fast-path timer paired with the Redis durable deadline
     if (io) {
       TimerService.setTimer(`blunder:${room.roomId}`, challengeTimeoutMs + 25, async () => {
         await BlunderService.handleBlunderTimeout(room.roomId, io);
@@ -107,13 +273,13 @@ export class BlunderService {
         return { success: false, error: 'Revert window has expired', events: [] };
       }
 
-      TimerService.clearRoomTimers(roomId);
-
       // Return escrowed cards safely to player hand
       player.cards.push(...room.blunderState.cards);
       room.blunderState = undefined;
 
       await RoomService.saveRoom(room);
+      await this.clearDeadline(roomId);
+      metrics.inc('blunders_reverted_total');
 
       const events: GameEvent[] = [
         {
@@ -167,12 +333,11 @@ export class BlunderService {
         return { success: false, error: 'Challenge window has expired', events: [] };
       }
 
-      TimerService.clearRoomTimers(roomId);
-
       const blunderPlayer = room.players.find((p) => p.id === room.blunderState!.playerId);
       if (!blunderPlayer) {
         room.blunderState = undefined;
         await RoomService.saveRoom(room);
+        await this.clearDeadline(roomId);
         return { success: false, error: 'Blunder player not found', events: [] };
       }
 
@@ -190,6 +355,8 @@ export class BlunderService {
       room.blunderState = undefined;
 
       await RoomService.saveRoom(room);
+      await this.clearDeadline(roomId);
+      metrics.inc('blunders_challenged_total');
 
       const events: GameEvent[] = [
         {
@@ -213,8 +380,8 @@ export class BlunderService {
   }
 
   /**
-   * Server-controlled blunder expiration handler.
-   * Strictly enforces that the challenge window has genuinely expired before resolving!
+   * Idempotent, room-locked, server-controlled blunder expiration handler.
+   * Strictly enforces that the challenge window has genuinely expired before resolving.
    */
   static async handleBlunderTimeout(
     roomId: string,
@@ -223,6 +390,8 @@ export class BlunderService {
     return await RoomLockService.runWithLock(roomId, async () => {
       const room = await RoomService.getRoom(roomId);
       if (!room || !room.blunderState || !room.blunderState.active) {
+        // Idempotent cleanup of any stale deadline entry in Redis
+        await this.clearDeadline(roomId);
         return { resolved: false, error: 'No active blunder', events: [] };
       }
 
@@ -243,6 +412,7 @@ export class BlunderService {
       if (!blunderPlayer) {
         room.blunderState = undefined;
         await RoomService.saveRoom(room);
+        await this.clearDeadline(roomId);
         return { resolved: false, error: 'Blunder player not found', events: [] };
       }
 
@@ -264,6 +434,8 @@ export class BlunderService {
       room.blunderState = undefined;
 
       await RoomService.saveRoom(room);
+      await this.clearDeadline(roomId);
+      metrics.inc('blunders_resolved_timeout_total');
 
       const events: GameEvent[] = [
         {

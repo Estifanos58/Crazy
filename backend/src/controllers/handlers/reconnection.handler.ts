@@ -2,20 +2,35 @@ import type { Server, Socket } from 'socket.io';
 import { RoomService } from '../../services/room.service';
 import { SessionAuthService } from '../../services/session-auth.service';
 import { GameBroadcaster } from '../../services/game-broadcaster.service';
+import { RateLimitService } from '../../services/rate-limit.service';
 import {
   formatZodError,
   rejoinRoomSchema,
   roomActionSchema,
 } from '../../validation/socket.schemas';
 import { logger } from '../../utils/logger';
+import { metrics } from '../../utils/metrics';
 
 export class ReconnectionHandler {
   static handle(socket: Socket, io: Server): void {
     // Rejoin room securely after reconnection
     socket.on('rejoin-room', async (rawPayload: unknown, callback) => {
+      const ip = RateLimitService.getClientIp(socket);
+
       try {
+        if (await RateLimitService.isBlocked('rejoin-auth-fail', ip)) {
+          if (typeof callback === 'function') {
+            callback({
+              success: false,
+              error: 'Too many failed reconnection attempts. Please try again later.',
+            });
+          }
+          return;
+        }
+
         const parsed = rejoinRoomSchema.safeParse(rawPayload);
         if (!parsed.success) {
+          metrics.inc('socket_validation_errors_total');
           if (typeof callback === 'function') {
             callback({ success: false, error: formatZodError(parsed.error) });
           }
@@ -33,6 +48,7 @@ export class ReconnectionHandler {
         );
 
         if (!result) {
+          await RateLimitService.consume('rejoin-auth-fail', ip);
           if (typeof callback === 'function') {
             callback({ success: false, error: 'Room not found' });
           }
@@ -74,8 +90,10 @@ export class ReconnectionHandler {
           username: player.username,
         });
       } catch (error) {
+        await RateLimitService.consume('rejoin-auth-fail', ip);
         logger.warn('Error rejoining room', {
           socketId: socket.id,
+          ip,
           error: error instanceof Error ? error : String(error),
         });
         if (typeof callback === 'function') {
@@ -89,6 +107,7 @@ export class ReconnectionHandler {
       try {
         const parsed = roomActionSchema.safeParse(rawPayload);
         if (!parsed.success) {
+          metrics.inc('socket_validation_errors_total');
           if (typeof callback === 'function') {
             callback({ success: false, error: formatZodError(parsed.error) });
           }

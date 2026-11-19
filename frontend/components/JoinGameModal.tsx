@@ -14,7 +14,7 @@ function extractRoomId(rawInput: string): string {
   if (urlMatch?.[1]) {
     return urlMatch[1];
   }
-  return trimmed.replace(/\s+/g, '');
+  return trimmed.replace(/\s+/g, '').toUpperCase();
 }
 
 export default function JoinGameModal({ onJoin, onCancel }: JoinGameModalProps) {
@@ -39,13 +39,13 @@ export default function JoinGameModal({ onJoin, onCancel }: JoinGameModalProps) 
           id="join-room-code"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          className="input-field font-mono text-center text-lg tracking-widest"
-          placeholder="e.g. 482915"
+          className="input-field font-mono text-center text-lg tracking-widest uppercase"
+          placeholder="e.g. K7P4M2"
           autoFocus
           required
         />
         <p className="mt-2 text-xs text-ivory-500">
-          Enter the 6-digit code shared by the host, or paste the full room invite URL.
+          Enter the 6-character code shared by the host, or paste the full room invite URL.
         </p>
       </div>
 

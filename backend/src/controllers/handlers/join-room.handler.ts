@@ -1,15 +1,29 @@
 import type { Server, Socket } from 'socket.io';
 import { RoomService } from '../../services/room.service';
 import { GameBroadcaster } from '../../services/game-broadcaster.service';
+import { RateLimitService } from '../../services/rate-limit.service';
 import { formatZodError, getRoomSchema, joinRoomSchema } from '../../validation/socket.schemas';
 import { logger } from '../../utils/logger';
+import { metrics } from '../../utils/metrics';
 
 export class JoinRoomHandler {
   static handle(socket: Socket, io: Server): void {
     socket.on('join-room', async (rawPayload: unknown, callback) => {
       try {
+        const ip = RateLimitService.getClientIp(socket);
+        if (await RateLimitService.isBlocked('get-room-miss', ip)) {
+          if (typeof callback === 'function') {
+            callback({
+              success: false,
+              error: 'Too many invalid room lookups. Please try again later.',
+            });
+          }
+          return;
+        }
+
         const parsed = joinRoomSchema.safeParse(rawPayload);
         if (!parsed.success) {
+          metrics.inc('socket_validation_errors_total');
           if (typeof callback === 'function') {
             callback({ success: false, error: formatZodError(parsed.error) });
           }
@@ -20,6 +34,7 @@ export class JoinRoomHandler {
         const result = await RoomService.joinRoom(socket.id, { roomId, username, avatar });
 
         if (!result) {
+          await RateLimitService.consume('get-room-miss', ip);
           if (typeof callback === 'function') {
             callback({ success: false, error: 'Room not found' });
           }
@@ -67,8 +82,20 @@ export class JoinRoomHandler {
 
     socket.on('get-room', async (rawRoomId: unknown, callback) => {
       try {
+        const ip = RateLimitService.getClientIp(socket);
+        if (await RateLimitService.isBlocked('get-room-miss', ip)) {
+          if (typeof callback === 'function') {
+            callback({
+              success: false,
+              error: 'Too many invalid room lookups. Please try again later.',
+            });
+          }
+          return;
+        }
+
         const parsed = getRoomSchema.safeParse(rawRoomId);
         if (!parsed.success) {
+          metrics.inc('socket_validation_errors_total');
           if (typeof callback === 'function') {
             callback({ success: false, error: formatZodError(parsed.error) });
           }
@@ -77,6 +104,7 @@ export class JoinRoomHandler {
 
         const room = await RoomService.getRoom(parsed.data);
         if (!room) {
+          await RateLimitService.consume('get-room-miss', ip);
           if (typeof callback === 'function') {
             callback({ success: false, error: 'Room not found' });
           }

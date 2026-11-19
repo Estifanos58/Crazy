@@ -21,6 +21,29 @@ type GetState = () => GameStore;
 type SetState = (state: Partial<GameStore>) => void;
 
 const DEFAULT_ACK_TIMEOUT_MS = 8000;
+const CONNECT_WAIT_TIMEOUT_MS = 4000;
+
+async function ensureSocketConnected(
+  socket: Socket | null,
+  timeoutMs = CONNECT_WAIT_TIMEOUT_MS
+): Promise<boolean> {
+  if (!socket) return false;
+  if (socket.connected) return true;
+
+  return await new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      socket.off('connect', onConnect);
+      resolve(socket.connected);
+    }, timeoutMs);
+
+    const onConnect = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+
+    socket.once('connect', onConnect);
+  });
+}
 
 /**
  * Emit a Socket.IO event with a guaranteed acknowledgement timeout so promises never hang.
@@ -135,7 +158,7 @@ export const createRoom = async (
   set: SetState
 ): Promise<{ success: boolean; roomId?: string; error?: string }> => {
   const { socket, username, avatar } = get();
-  if (!socket || !socket.connected) {
+  if (!(await ensureSocketConnected(socket))) {
     return { success: false, error: 'Connecting to server. Please try again in a moment.' };
   }
   if (!username.trim() || !avatar) {
@@ -182,7 +205,7 @@ export const joinRoom = async (
   roomId: string
 ): Promise<{ success: boolean; error?: string }> => {
   const { socket, username, avatar } = get();
-  if (!socket || !socket.connected) {
+  if (!(await ensureSocketConnected(socket))) {
     return { success: false, error: 'Connecting to server. Please try again in a moment.' };
   }
   if (!username.trim() || !avatar) {

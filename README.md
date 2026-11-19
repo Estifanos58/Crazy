@@ -8,7 +8,9 @@ A hardened, server-authoritative full-stack multiplayer card game built with **T
 
 - **Authoritative Server Engine**: Deck creation, cryptographically secure shuffling (`crypto.randomInt`), move validation, punishment chains, blunder windows, and turn progression are enforced strictly on the backend.
 - **Session Security & Privacy**: Timing-safe persistent session tokens (`playerId` + `playerToken`) protect reconnection across lobby, active, and finished games. Private player hands and session tokens are never leaked to other players.
-- **Distributed Room Locking**: Per-room local queue serialization paired with Redis `SET NX PX` locks, periodic TTL renewal, and Lua compare-and-delete release ensures atomic state mutations and refuses execution if lock acquisition fails.
+- **Distributed Room Locking**: Per-room local queue serialization paired with Redis `SET NX PX` locks, periodic TTL renewal with loss detection, monotonic fencing tokens (`INCR lock:fence:<roomId>`), and atomic Lua conditional writes that block stale lock owners from overwriting newer state.
+- **Durable Blunder Timers**: Blunder expiration deadlines are persisted in a Redis Sorted Set (`blunder:deadlines`) with startup recovery and periodic idempotent sweeping under room locks so active blunders resolve even across backend restarts.
+- **Rate Limiting & Abuse Protection**: Redis-backed fixed-window rate limits guard Socket.IO handshakes, room creation, room joining, room discovery (`get-room` anti-enumeration miss throttling), reconnection auth failures, and gameplay events, alongside per-IP concurrent connection caps.
 - **Shared Contracts & Runtime Validation**: Shared TypeScript contracts in `shared/` serve as the single source of truth for frontend and backend, backed by Zod runtime schema validation on every Socket.IO event.
 - **Responsive Card-Table UI**: Redesigned parlor-inspired interface with custom playing cards, clear turn & suit indicators, QR room sharing, lobby rule presets, and full keyboard/reduced-motion accessibility.
 
@@ -97,11 +99,15 @@ docs/
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `PORT` | `3001` | HTTP and Socket.IO listen port |
-| `REDIS_URL` | `redis://localhost:6379` | Redis connection URL (`redis://` or `rediss://`) |
-| `REDIS_REQUIRED` | `true` in production, `false` in dev | If `true`, server fails startup and readiness checks when Redis is unreachable |
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection URL (`redis://` or `rediss://`) for local runs |
+| `DOCKER_REDIS_URL` | `redis://redis:6379` | Optional Redis URL override for Docker Compose |
+| `ALLOW_MEMORY_STORE` | *(unset)* | Non-production **only**: set `true` to explicitly opt into in-memory fallback without Redis (forbidden in `NODE_ENV=production`) |
 | `CORS_ORIGIN` | `http://localhost:3000` | Allowed CORS origin(s), comma-separated for multiple origins |
+| `TRUST_PROXY` | `false` | Set `true` behind a reverse proxy so rate limits read `X-Forwarded-For` |
+| `MAX_CONNECTIONS_PER_IP` | `25` | Maximum concurrent Socket.IO connections allowed per client IP |
+| `METRICS_TOKEN` | *(unset)* | Optional Bearer token protecting `GET /metrics` |
 | `LOG_LEVEL` | `info` (prod) / `debug` (dev) | Structured logger threshold (`debug`, `info`, `warn`, `error`) |
-| `NODE_ENV` | `development` | Runtime environment (`development`, `test`, `production`) |
+| `NODE_ENV` | `development` | Runtime environment (`development`, `test`, `production`; Redis is strictly mandatory in `production`) |
 
 ### Frontend (`frontend/.env.local` or Docker build args)
 
@@ -129,12 +135,14 @@ To run the test suite against a live Redis server:
 TEST_REDIS_URL=redis://127.0.0.1:6379 NODE_ENV=test npm test
 ```
 
-### Frontend (Lint & Production Build)
+### Frontend (Lint, Unit/Component Tests, Build & E2E)
 
 ```bash
 cd frontend
 npm run lint
+npm test
 npm run build
+npm run test:e2e   # Runs Playwright multiplayer E2E tests against http://127.0.0.1:3000
 ```
 
 ---

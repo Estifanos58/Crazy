@@ -2,10 +2,10 @@ import type { Server } from 'socket.io';
 import { RoomService } from './room.service';
 import { RuleService } from './rule.service';
 import { RoomLockService } from './lock.service';
-import { TimerService } from './timer.service';
 import { SessionAuthService } from './session-auth.service';
 import { BlunderService } from './blunder.service';
 import { GameBroadcaster } from './game-broadcaster.service';
+import { metrics } from '../utils/metrics';
 import type {
   Card,
   GameEvent,
@@ -122,9 +122,10 @@ export class GameOrchestrator {
       }
 
       // Valid Move: Apply card effects
-      TimerService.clearRoomTimers(roomId);
+      await BlunderService.clearDeadline(roomId);
       room.blunderState = undefined;
 
+      const effectiveConfig = RuleService.mergeConfig(room.ruleConfig);
       const { updatedState, events } = RuleService.applyCardEffects(
         gameState,
         player.id,
@@ -133,10 +134,10 @@ export class GameOrchestrator {
         cards.length > 1
       );
 
-      // Check if player finished (ran out of cards)
-      const finishedPlayer = updatedState.players.find(
-        (p) => p.id === player.id && p.cards.length === 0
-      );
+      // Check if player finished (respecting ruleConfig.winOnEmpty consistently with RuleService!)
+      const finishedPlayer = effectiveConfig.winOnEmpty
+        ? updatedState.players.find((p) => p.id === player.id && p.cards.length === 0)
+        : undefined;
       if (finishedPlayer) {
         if (!room.finishedPlayers) room.finishedPlayers = [];
         const rank = room.finishedPlayers.length + 1;
@@ -321,8 +322,9 @@ export class GameOrchestrator {
 
       const isActualCreator = room.creatorId === player.id;
       if (isCreatorRequested && isActualCreator) {
-        TimerService.clearRoomTimers(roomId);
+        await BlunderService.clearDeadline(roomId);
         await RoomService.deleteRoom(roomId);
+        metrics.inc('rooms_terminated_total');
         return { terminated: true, leavingPlayer: player, events: [] };
       }
 
@@ -339,7 +341,7 @@ export class GameOrchestrator {
 
       // Clear active blunder if the leaving player caused it
       if (room.blunderState?.active && room.blunderState.playerId === player.id) {
-        TimerService.clearRoomTimers(roomId);
+        await BlunderService.clearDeadline(roomId);
         room.blunderState = undefined;
       }
 
@@ -352,8 +354,9 @@ export class GameOrchestrator {
       // If room is now completely empty, clean up Redis + timers
       const totalRemaining = room.players.length + (room.finishedPlayers?.length || 0);
       if (totalRemaining === 0) {
-        TimerService.clearRoomTimers(roomId);
+        await BlunderService.clearDeadline(roomId);
         await RoomService.deleteRoom(roomId);
+        metrics.inc('rooms_terminated_total');
         return { terminated: true, leavingPlayer: player, events: [] };
       }
 
@@ -373,7 +376,7 @@ export class GameOrchestrator {
 
       // If <= 1 active players remain during an active game, conclude the match properly
       if (room.gameStarted && room.players.length <= 1) {
-        TimerService.clearRoomTimers(roomId);
+        await BlunderService.clearDeadline(roomId);
         room.gameOver = true;
         room.gameStarted = false;
         room.currentTurn = undefined;
@@ -429,7 +432,7 @@ export class GameOrchestrator {
         return { success: false, error: 'At least 2 players are required to play again' };
       }
 
-      TimerService.clearRoomTimers(roomId);
+      await BlunderService.clearDeadline(roomId);
 
       const resetRoom = await RoomService.resetGameUnlocked(room);
 

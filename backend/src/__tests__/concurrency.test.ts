@@ -84,6 +84,9 @@ describe('Concurrency Control, Distributed Lock Safety & Queue Cleanup', () => {
       set: async () => {
         throw new Error('ECONNREFUSED Redis down');
       },
+      incr: async () => {
+        throw new Error('ECONNREFUSED Redis down');
+      },
       eval: async () => 0,
     });
 

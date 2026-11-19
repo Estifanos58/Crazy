@@ -86,7 +86,9 @@ export class RuleService {
     const events: GameEvent[] = [];
 
     // Capture active player count BEFORE removing played cards (needed for 2-player reverse rule)
-    const activePlayerCountBefore = newState.players.filter((p) => p.cards.length > 0).length;
+    const activePlayerCountBefore = config.winOnEmpty
+      ? newState.players.filter((p) => p.cards.length > 0).length
+      : newState.players.filter((p) => p.finishedAt === undefined).length;
 
     // Remove cards from player's hand
     const player = newState.players.find((p) => p.id === playerId);
@@ -316,13 +318,14 @@ export class RuleService {
     }
 
     const playersWithCards = state.players.filter((p) => p.cards.length > 0);
+    const finishedPlayers = state.players.filter((p) => p.cards.length === 0);
 
     if (playersWithCards.length === 0) {
-      return { ended: true };
+      return { ended: true, winner: finishedPlayers[0]?.id };
     }
 
     if (playersWithCards.length === 1 && state.players.length > 1) {
-      return { ended: true, winner: playersWithCards[0].id };
+      return { ended: true, winner: finishedPlayers[0]?.id };
     }
 
     return { ended: false };

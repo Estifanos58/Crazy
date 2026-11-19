@@ -32,6 +32,10 @@ yarn-error.log*
 coverage/
 */coverage/
 .nyc_output/
+playwright-report/
+*/playwright-report/
+test-results/
+*/test-results/
 
 # OS files
 .DS_Store

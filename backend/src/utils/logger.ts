@@ -18,7 +18,15 @@ function getMinLevel(): number {
   return process.env.NODE_ENV === 'production' ? LEVEL_PRIORITY.info : LEVEL_PRIORITY.debug;
 }
 
-const REDACTED_KEYS = new Set(['playerToken', 'token', 'password', 'authorization', 'cards', 'yourCards']);
+const REDACTED_KEYS = new Set([
+  'playerToken',
+  'token',
+  'lockToken',
+  'password',
+  'authorization',
+  'cards',
+  'yourCards',
+]);
 
 function sanitizeMeta(meta?: Record<string, unknown>): Record<string, unknown> | undefined {
   if (!meta) return undefined;
@@ -27,7 +35,10 @@ function sanitizeMeta(meta?: Record<string, unknown>): Record<string, unknown> |
     if (REDACTED_KEYS.has(key)) {
       clean[key] = '[REDACTED]';
     } else if (value instanceof Error) {
-      clean[key] = { name: value.name, message: value.message };
+      clean[key] =
+        process.env.NODE_ENV === 'production'
+          ? { name: value.name, message: value.message }
+          : { name: value.name, message: value.message, stack: value.stack };
     } else {
       clean[key] = value;
     }
@@ -44,6 +55,7 @@ function writeLog(level: LogLevel, message: string, meta?: Record<string, unknow
     timestamp: new Date().toISOString(),
     level,
     service: 'crazy-backend',
+    pid: process.pid,
     message,
     ...sanitizeMeta(meta),
   };

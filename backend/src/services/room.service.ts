@@ -14,9 +14,19 @@ import { RoomLockService } from './lock.service';
 import { SessionAuthService } from './session-auth.service';
 import { GameBroadcaster } from './game-broadcaster.service';
 import { RulePresets, RuleValidator } from '../utils/rule-builder';
+import { metrics } from '../utils/metrics';
 
-function generateRoomId(): string {
-  return String(crypto.randomInt(100000, 1000000));
+// Unambiguous 32-character alphabet (omits 0/O/1/I): 32^6 > 1.07 billion unique codes
+const ROOM_ID_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+const ROOM_ID_LENGTH = 6;
+const MAX_ROOM_CREATE_ATTEMPTS = 10;
+
+function defaultGenerateRoomId(): string {
+  let code = '';
+  for (let i = 0; i < ROOM_ID_LENGTH; i++) {
+    code += ROOM_ID_ALPHABET[crypto.randomInt(0, ROOM_ID_ALPHABET.length)];
+  }
+  return code;
 }
 
 function generatePlayerId(): string {
@@ -37,19 +47,24 @@ export class RoomService {
   private static ROOM_PREFIX = 'room:';
   private static ROOM_EXPIRY = 3600 * 4; // 4 hours
   private static MAX_PLAYERS = 8;
+  private static roomIdGenerator: () => string = defaultGenerateRoomId;
 
+  /**
+   * Test hook to inject a deterministic room ID generator (for atomic collision regression tests).
+   */
+  static setRoomIdGenerator(generator: (() => string) | null): void {
+    this.roomIdGenerator = generator || defaultGenerateRoomId;
+  }
+
+  /**
+   * Atomically allocate a unique room ID using `SET NX EX` so concurrent room creations
+   * can NEVER collide or overwrite an existing room.
+   */
   static async createRoom(
     creatorSocketId: string,
     username: string,
     avatar: string
   ): Promise<JoinRoomResult> {
-    let roomId = generateRoomId();
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const taken = await this.roomExists(roomId);
-      if (!taken) break;
-      roomId = generateRoomId();
-    }
-
     const playerId = generatePlayerId();
     const playerToken = generatePlayerToken();
     const cleanUsername = username.trim();
@@ -65,19 +80,32 @@ export class RoomService {
       connected: true,
     };
 
-    const room: GameRoom = {
-      roomId,
-      creatorId: playerId,
-      players: [creator],
-      finishedPlayers: [],
-      gameStarted: false,
-      gameOver: false,
-      deck: [],
-      createdAt: Date.now(),
-    };
+    for (let attempt = 0; attempt < MAX_ROOM_CREATE_ATTEMPTS; attempt++) {
+      const roomId = this.roomIdGenerator();
+      const room: GameRoom = {
+        roomId,
+        creatorId: playerId,
+        players: [creator],
+        finishedPlayers: [],
+        gameStarted: false,
+        gameOver: false,
+        deck: [],
+        createdAt: Date.now(),
+      };
 
-    await this.saveRoom(room);
-    return { room, playerId, playerToken };
+      const created = await redisService.setIfNotExists(
+        `${this.ROOM_PREFIX}${roomId}`,
+        JSON.stringify(room),
+        this.ROOM_EXPIRY
+      );
+
+      if (created) {
+        metrics.inc('rooms_created_total');
+        return { room, playerId, playerToken };
+      }
+    }
+
+    throw new Error('Failed to allocate a unique room ID after multiple attempts');
   }
 
   /**
@@ -303,16 +331,34 @@ export class RoomService {
     }
   }
 
+  /**
+   * Persist room state. When invoked inside `RoomLockService.runWithLock(roomId, ...)`,
+   * uses atomic lock-ownership + monotonic fencing token conditional write to block stale owners.
+   */
   static async saveRoom(room: GameRoom): Promise<void> {
-    await redisService.set(
-      `${this.ROOM_PREFIX}${room.roomId}`,
-      JSON.stringify(room),
-      this.ROOM_EXPIRY
-    );
+    const roomKey = `${this.ROOM_PREFIX}${room.roomId}`;
+    const serialized = JSON.stringify(room);
+
+    if (RoomLockService.getActiveLock(room.roomId)) {
+      await RoomLockService.saveRoomWithFence(room.roomId, roomKey, serialized, this.ROOM_EXPIRY);
+      return;
+    }
+
+    await redisService.set(roomKey, serialized, this.ROOM_EXPIRY);
   }
 
+  /**
+   * Delete room state. Uses atomic lock-ownership + fencing verification when called inside a room lock.
+   */
   static async deleteRoom(roomId: string): Promise<void> {
-    await redisService.delete(`${this.ROOM_PREFIX}${roomId}`);
+    const roomKey = `${this.ROOM_PREFIX}${roomId}`;
+
+    if (RoomLockService.getActiveLock(roomId)) {
+      await RoomLockService.deleteRoomWithFence(roomId, roomKey);
+      return;
+    }
+
+    await redisService.delete(roomKey);
   }
 
   static async roomExists(roomId: string): Promise<boolean> {
